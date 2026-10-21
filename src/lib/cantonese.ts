@@ -637,13 +637,13 @@ export const VERIFIED_CANTONESE_WORSHIP_CHARS: Record<string, string[]> = {
 export const RAW_CANTONESE_WORSHIP_CORPUS: string[] = [
   // === 0. 【爭戰得勝與宣告掌權】（涵蓋「宣告耶穌作王」多種 0243 自然協音表達） ===
   // 2字
-  '掌權', '作王', '君王', '寶座', '掌管', '統管', '誇勝', '得勝', '凱旋', '權柄', '威嚴', '高舉', '稱頌', '稱揚', '宣告', '宣稱', '宣揚', '萬王', '國度', '榮美', '剛強', '壯膽', '勝過', '擊退', '破開', '衝破',
+  '掌權', '作王', '君王', '寶座', '掌管', '統管', '誇勝', '得勝', '凱旋', '權柄', '威嚴', '高舉', '稱頌', '稱揚', '宣告', '宣稱', '宣揚', '頌揚', '父神', '大能', '伴隨', '道成', '國度', '榮美', '剛強', '壯膽', '勝過', '擊退', '破開', '衝破',
   // 3字
-  '已掌權', '仍掌權', '神掌權', '主掌權', '祢掌權', '永掌權', '必掌權', '已作王', '仍作王', '神作王', '主作王', '永作王', '尊主王', '坐寶座', '顯權柄', '彰榮耀', '高舉主', '宣稱主', '宣告主', '破黑暗', '勝黑暗', '誇勝了', '勝萬有', '大得勝', '主得勝', '立主名', '顯威嚴',
+  '愛慕神', '讚美神', '向著神', '已掌權', '仍掌權', '神掌權', '主掌權', '祢掌權', '永掌權', '必掌權', '已作王', '仍作王', '神作王', '主作王', '永作王', '尊主王', '坐寶座', '顯權柄', '彰榮耀', '高舉主', '宣稱主', '宣告主', '破黑暗', '勝黑暗', '誇勝了', '勝萬有', '大得勝', '主得勝', '立主名', '顯威嚴',
   // 4字（意念同義重組：如「宣告耶穌作王」依不同音階自然轉化）
   '尊主作王', '宣稱作王', '讚美作王', '願祢作王', '祢已掌權', '神已掌權', '主已掌權', '父已掌權', '永遠掌權', '萬代掌權', '坐著為王', '掌權作王', '執掌王權', '父祢作王', '仍坐寶座', '高坐寶座', '掌管萬有', '掌管萬事', '掌管一生', '萬王之王', '榮耀國度', '彰顯榮光', '宣揚主名', '宣告主愛', '宣告作王', '尊主為大', '權柄歸祢', '威嚴無雙', '破開黑暗', '衝破捆鎖', '擊退仇敵', '誇勝得勝', '全然得勝', '勝過患難', '勝過幽暗', '得勝有餘',
   // 5字
-  '宣稱主作王', '宣揚主作王', '尊崇主作王', '宣告主掌權', '靠著祢得勝', '靠著主得勝', '靠主得勝了', '誇勝勝萬有', '破開諸黑暗', '永遠坐寶座', '萬代掌王權', '高舉主聖名', '國度歸於祢', '父祢仍作王', '在患難掌權', '風暴裡掌權', '患難裡掌權', '困境裡掌權', '洪水裡作王', '全地當讚揚',
+  '向恩主獻心', '宣稱主作王', '宣揚主作王', '尊崇主作王', '宣告主掌權', '靠著祢得勝', '靠著主得勝', '靠主得勝了', '誇勝勝萬有', '破開諸黑暗', '永遠坐寶座', '萬代掌王權', '高舉主聖名', '國度歸於祢', '父祢仍作王', '在患難掌權', '風暴裡掌權', '患難裡掌權', '困境裡掌權', '洪水裡作王', '全地當讚揚',
 
   // === 1. 【患難逆境與安慰陪伴】（風浪、暗夜、牽引、不驚惶、安息） ===
   // 2字
@@ -863,22 +863,23 @@ function isNaturalCombinedPhrase(left: string, right: string): boolean {
 
   // 5. 避免詞組結尾停在懸空介詞／連詞／副詞（如「...在」、「...向」、「...求」、「...更」）
   const lastChar = chars[chars.length - 1];
-  if (/[在向從為因共唯求更未漸還誰但用縱仍]/.test(lastChar)) return false;
-
-  // 6. 當合成 5 字以上長句時，避免將純景物名詞（無「裡/中/下/過」等連貫字）直接硬貼在另一子句前（例如避免「曠野＋愛不變＝曠野愛不變」）
-  if (chars.length >= 5 && left.length === 2) {
-    const barePlaceNouns = new Set([
-      '曠野', '沙漠', '山嶺', '高山', '山谷', '幽谷', '深海', '海洋', '海岸',
-      '港灣', '大地', '全地', '塵世', '塵土', '果子', '麥田', '禾稼', '青草',
-      '晴空', '藍天', '天際', '穹蒼', '雲彩', '彩虹', '家園',
-    ]);
-    if (barePlaceNouns.has(left) && !/^[裡中下上內外間開放流照見]/.test(right)) {
-      return false;
-    }
-  }
+  // 7. 嚴禁任何文理不通、生硬古怪的死板拼湊（例如「真主」、「我慕神」、「慕神」、「萬王」作為雙字）
+  if (combined.includes('真主')) return false; // 「真主」非現代粵語基督教詩歌用語
+  if (combined.includes('慕神') || combined.includes('我慕')) return false; // 「我慕神」不合粵語語法，應用「愛慕神」、「渴慕神」或「渴慕祢」
+  if (combined === '萬王' || (combined.includes('萬王') && !combined.includes('萬王之王'))) return false; // 「萬王」單獨不成詞，必須是「萬王之王」
+  if (combined.includes('主我心') || combined.includes('真主我心')) return false; // 倒錯語法
+  if (combined.includes('神我主') || combined.includes('我主神')) return false;
 
   return true;
 }
+
+const ALLOWED_SINGLE_PREFIX = new Set([
+  '我', '你', '祢', '祂', '主', '神', '在', '為', '同', '共', '向', '未', '莫', '不', '定', '願', '聽', '靠', '因', '將', '更', '已', '仍', '深', '真', '全'
+]);
+
+const ALLOWED_SINGLE_SUFFIX = new Set([
+  '裡', '中', '前', '後', '邊', '旁', '手', '心', '聲', '光', '話', '愛', '恩', '名', '道', '面', '家', '深'
+]);
 
 /**
  * 針對任意長度的單一目標數字譜（支援 1 至 8+ 字），
@@ -917,16 +918,24 @@ export function getVerifiedCandidatesForGroupPattern(
     }
   }
 
-  // 2. 自然語法切分拼接
+  // 2. 嚴格自然語法切分拼接（杜絕 1+1 胡亂拼字）
   if (exactCandidates.length < Math.max(limit, 24)) {
     const len = cleanPattern.length;
     const splits: [number, number][] = [];
-    if (len === 2) splits.push([1, 1]);
-    else if (len === 3) splits.push([2, 1], [1, 2]);
-    else if (len === 4) splits.push([2, 2], [1, 3], [3, 1]);
-    else if (len === 5) splits.push([2, 3], [3, 2]);
-    else if (len === 6) splits.push([2, 4], [4, 2], [3, 3]);
-    else if (len > 6) {
+    if (len === 2) {
+      // 2字詞組絕對禁止 1+1 亂拼！必須從人手驗證的完整2字詞庫產生
+    } else if (len === 3) {
+      // 3字詞組只允許 1+2 或 2+1，且單字必須是合法前綴/後綴，2字部分必須是真實詞彙
+      splits.push([1, 2], [2, 1]);
+    } else if (len === 4) {
+      // 4字詞組只允許 2+2（兩個真實雙字詞合成，例如「恩典之路」），禁止 1+3 或 3+1 拼裝
+      splits.push([2, 2]);
+    } else if (len === 5) {
+      // 5字詞組只允許 2+3 或 3+2（真實雙字詞 + 真實三字短語，如「風浪裡同行」），禁止 1+4 或 4+1
+      splits.push([2, 3], [3, 2]);
+    } else if (len === 6) {
+      splits.push([3, 3], [2, 4], [4, 2]);
+    } else if (len > 6) {
       splits.push([4, len - 4], [3, len - 3], [2, len - 2]);
     }
 
@@ -951,7 +960,9 @@ export function getVerifiedCandidatesForGroupPattern(
       const rightWords = maybeShuffle(rightRaw).slice(0, 22);
 
       for (const lw of leftWords) {
+        if (leftLen === 1 && !ALLOWED_SINGLE_PREFIX.has(lw)) continue;
         for (const rw of rightWords) {
+          if (cleanPattern.length - leftLen === 1 && !ALLOWED_SINGLE_SUFFIX.has(rw)) continue;
           if (!isNaturalCombinedPhrase(lw, rw)) continue;
 
           const combined = `${lw}${rw}`;
