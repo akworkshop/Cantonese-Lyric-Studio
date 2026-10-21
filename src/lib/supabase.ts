@@ -1,8 +1,22 @@
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 import { LyricLine } from '@/types/lyric';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const FALLBACK_SUPABASE_URL = 'https://phiiglwfhrolhcettmlz.supabase.co';
+const FALLBACK_SUPABASE_ANON_KEY = 'sb_publishable_ELfjj1Yz1qBsKzNOEXRcxw_PEcKTu0q';
+
+const getEnvOrStored = (key: string, fallback: string): string => {
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key]!.trim();
+  }
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem(key);
+    if (stored && stored.trim()) return stored.trim();
+  }
+  return fallback;
+};
+
+const supabaseUrl = getEnvOrStored('NEXT_PUBLIC_SUPABASE_URL', FALLBACK_SUPABASE_URL);
+const supabaseAnonKey = getEnvOrStored('NEXT_PUBLIC_SUPABASE_ANON_KEY', FALLBACK_SUPABASE_ANON_KEY);
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
