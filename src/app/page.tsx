@@ -2546,7 +2546,7 @@ export default function CantoneseLyricStudioPage() {
                   onChange={(e) =>
                     setAiConfig((prev) => ({ ...prev, model: e.target.value }))
                   }
-                  placeholder="亦可直接輸入模型 ID（例如 gemini-2.5-pro 或 openai/gpt-oss-120b）"
+                  placeholder="亦可直接輸入模型 ID（例如 gemini-2.5-flash 或 llama-3.3-70b-versatile）"
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-800 focus:outline-none focus:border-zinc-900 mt-1.5"
                 />
               </div>

@@ -118,101 +118,153 @@ export async function callLLMJson<T>(
     if (!apiKey) {
       throw new Error('請點擊右上角「模型」設定您的 Groq API Key。');
     }
-    const model = (config.model || 'llama-3.3-70b-versatile').trim();
 
-    const isReasoningOrGptOss =
-      model.toLowerCase().includes('gpt-oss') ||
-      model.toLowerCase().includes('deepseek') ||
-      model.toLowerCase().includes('qwq') ||
-      model.toLowerCase().includes('r1');
+    const runWithModel = async (targetModel: string): Promise<T> => {
+      const isReasoning =
+        targetModel.toLowerCase().includes('gpt-oss') ||
+        targetModel.toLowerCase().includes('deepseek') ||
+        targetModel.toLowerCase().includes('qwq') ||
+        targetModel.toLowerCase().includes('r1');
 
-    // DeepSeek R1 / 推理模型在低溫下容易進入循環死鎖輸出空白，官方推薦 0.6
-    const effectiveTemperature = isReasoningOrGptOss
-      ? Math.max(0.6, Math.min(temperature, 0.7))
-      : temperature;
+      // DeepSeek R1 / 推理模型在低溫下容易進入死循環，官方推薦 0.6
+      const effectiveTemperature = isReasoning
+        ? Math.max(0.6, Math.min(temperature, 0.7))
+        : temperature;
 
-    // GPT-OSS 與推理模型若使用 system role 可能會丟失輸出或返回空白，合併至 user
-    const messages = isReasoningOrGptOss
-      ? [
-          {
-            role: 'user',
-            content: `${systemPrompt}\n\n---\n\n請務必依上述規則直接以合法 JSON 回傳：\n\n${userPrompt}`,
+      // 針對推理模型加入限制思考長度的指示，防止思考過長耗盡 Token
+      const reasoningInstruction = isReasoning
+        ? '\n\n【重要格式要求】：請將思考過程嚴格控制在 100 字以內，切勿進行過度漫長的英文分析，請迅速直接輸出合法的 JSON 代碼區塊 ```json ... ```。'
+        : '';
+
+      const messages = isReasoning
+        ? [
+            {
+              role: 'user',
+              content: `${systemPrompt}\n\n---\n\n請務必依上述規則直接以合法 JSON 回傳：\n\n${userPrompt}${reasoningInstruction}`,
+            },
+          ]
+        : [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ];
+
+      const makeGroqCall = async (useJsonFormat: boolean) => {
+        const payload: Record<string, unknown> = {
+          model: targetModel,
+          messages,
+          temperature: effectiveTemperature,
+          max_tokens: 8192,
+          max_completion_tokens: 8192,
+        };
+        if (useJsonFormat) {
+          payload.response_format = { type: 'json_object' };
+        }
+
+        return fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
           },
-        ]
-      : [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ];
-
-    const makeGroqCall = async (useJsonFormat: boolean) => {
-      const payload: Record<string, unknown> = {
-        model,
-        messages,
-        temperature: effectiveTemperature,
-        max_tokens: 4096,
+          body: JSON.stringify(payload),
+        });
       };
-      if (useJsonFormat) {
-        payload.response_format = { type: 'json_object' };
+
+      // 先嘗試呼叫；若因 response_format 報 400，自動降級為純文字提取 JSON
+      let res = await makeGroqCall(!isReasoning);
+      if (!res.ok && !isReasoning && res.status === 400) {
+        res = await makeGroqCall(false);
       }
 
-      return fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
-      });
-    };
-
-    // 先嘗試呼叫；若因 response_format 報 400，自動降級為純文字提取 JSON
-    let res = await makeGroqCall(!isReasoningOrGptOss);
-    if (!res.ok && !isReasoningOrGptOss && res.status === 400) {
-      res = await makeGroqCall(false);
-    }
-
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(
-        `Groq API 錯誤 (${res.status}) [模型: ${model}]: ${errBody.slice(0, 300)}`
-      );
-    }
-
-    const data = await res.json();
-    const choice = data?.choices?.[0];
-    let text = choice?.message?.content || '';
-
-    // 若 content 為空（常見於 DeepSeek R1 / 推理模型），檢查 reasoning 欄位
-    if (!text && choice?.message?.reasoning) {
-      text = choice.message.reasoning;
-    }
-    if (!text && (choice?.message as { reasoning_content?: string })?.reasoning_content) {
-      text = (choice.message as { reasoning_content?: string }).reasoning_content || '';
-    }
-
-    // 若依然為空且剛剛使用了 response_format，嘗試不帶 response_format 重試一次
-    if (!text && !isReasoningOrGptOss) {
-      const retryRes = await makeGroqCall(false);
-      if (retryRes.ok) {
-        const retryData = await retryRes.json();
-        const retryChoice = retryData?.choices?.[0];
-        text =
-          retryChoice?.message?.content ||
-          retryChoice?.message?.reasoning ||
-          (retryChoice?.message as { reasoning_content?: string })?.reasoning_content ||
-          '';
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(
+          `Groq API 錯誤 (${res.status}) [模型: ${targetModel}]: ${errBody.slice(0, 300)}`
+        );
       }
-    }
 
-    if (!text) {
-      console.error('[Groq API Empty Response Debug]', JSON.stringify(data, null, 2));
+      const data = await res.json();
+      const choice = data?.choices?.[0];
+      const text = choice?.message?.content || '';
+
+      // 1. 若 content 存在且能找到 JSON，直接使用
+      if (text) {
+        try {
+          return extractJsonFromText<T>(text);
+        } catch {
+          // content 內未含完整 JSON，繼續嘗試 reasoning
+        }
+      }
+
+      // 2. 檢查 reasoning / reasoning_content（DeepSeek R1 模型可能將 JSON 寫入思考區塊）
+      if (choice?.message?.reasoning) {
+        try {
+          return extractJsonFromText<T>(choice.message.reasoning);
+        } catch {
+          // continue
+        }
+      }
+
+      if ((choice?.message as { reasoning_content?: string })?.reasoning_content) {
+        try {
+          return extractJsonFromText<T>(
+            (choice.message as { reasoning_content?: string }).reasoning_content!
+          );
+        } catch {
+          // continue
+        }
+      }
+
+      // 3. 若是非推理模型且啟用了 response_format 失敗，重試一次無格式模式
+      if (!isReasoning) {
+        const retryRes = await makeGroqCall(false);
+        if (retryRes.ok) {
+          const retryData = await retryRes.json();
+          const retryChoice = retryData?.choices?.[0];
+          const retryText =
+            retryChoice?.message?.content || retryChoice?.message?.reasoning || '';
+          if (retryText) {
+            return extractJsonFromText<T>(retryText);
+          }
+        }
+      }
+
       const finishReason = choice?.finish_reason || 'unknown';
       throw new Error(
-        `Groq API 回傳空白內容 [模型: ${model}, 結束狀態: ${finishReason}]。建議在頂部模型設定切換為「llama-3.3-70b-versatile」。`
+        `Groq 模型 [${targetModel}] 生成未能輸出完整 JSON (finish_reason: ${finishReason})`
       );
-    }
+    };
 
-    return extractJsonFromText<T>(text);
+    const initialModel = (config.model || 'llama-3.3-70b-versatile').trim();
+
+    try {
+      return await runWithModel(initialModel);
+    } catch (initialErr) {
+      // 若當前模型為推理模型（如 DeepSeek R1 / QwQ）且失敗，自動使用旗艦通用模型 llama-3.3-70b-versatile 無縫救援
+      const isInitialReasoning =
+        initialModel.toLowerCase().includes('deepseek') ||
+        initialModel.toLowerCase().includes('qwq') ||
+        initialModel.toLowerCase().includes('r1') ||
+        initialModel.toLowerCase().includes('gpt-oss');
+
+      if (isInitialReasoning && initialModel !== 'llama-3.3-70b-versatile') {
+        console.warn(
+          `[Groq 智慧救援] 推理模型 ${initialModel} 生成失敗，自動無縫切換至 llama-3.3-70b-versatile 重新生成...`
+        );
+        try {
+          return await runWithModel('llama-3.3-70b-versatile');
+        } catch (fallbackErr) {
+          throw new Error(
+            `Groq 生成失敗: ${
+              initialErr instanceof Error ? initialErr.message : String(initialErr)
+            }；備用救援模型亦失敗: ${
+              fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+            }`
+          );
+        }
+      }
+      throw initialErr;
+    }
   }
 
   if (provider === 'ollama') {
