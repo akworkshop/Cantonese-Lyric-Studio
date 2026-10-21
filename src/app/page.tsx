@@ -680,13 +680,19 @@ export default function CantoneseLyricStudioPage() {
       const data = await res.json();
       if (data.connected && data.models?.length > 0) {
         setGroqStatus({ checking: false, connected: true, models: data.models });
-        const gptOssModel = data.models.find((m: { id: string }) =>
-          m.id.toLowerCase().includes('gpt-oss')
-        );
-        setAiConfig((prev) => ({
-          ...prev,
-          model: gptOssModel ? gptOssModel.id : data.models[0].id,
-        }));
+        setAiConfig((prev) => {
+          if (data.models.some((m: { id: string }) => m.id === prev.model)) {
+            return prev;
+          }
+          const preferred =
+            data.models.find((m: { id: string }) => m.id.includes('llama-3.3-70b')) ||
+            data.models.find((m: { id: string }) => m.id.includes('deepseek-r1')) ||
+            data.models[0];
+          return {
+            ...prev,
+            model: preferred.id,
+          };
+        });
       } else {
         setGroqStatus({
           checking: false,

@@ -10,10 +10,10 @@ export const DEFAULT_MODELS: Record<
     { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', badge: '穩定高CP值' },
   ],
   groq: [
-    { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (OpenAI)', badge: '推薦・旗艦推理模型' },
-    { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B (OpenAI)', badge: '極速輕量推理' },
-    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile', badge: '通用高速模型' },
-    { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B', badge: '新一代多模態' },
+    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile', badge: '推薦・頂級旗艦' },
+    { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 (70B Distill)', badge: '深度思考推理' },
+    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant', badge: '極速輕量' },
+    { id: 'qwen-qwq-32b', name: 'Qwen QwQ 32B', badge: '高階推理' },
   ],
   ollama: [
     { id: 'qwen2.5:14b', name: 'Qwen 2.5 (14B)', badge: '本地中文首選' },
@@ -118,17 +118,38 @@ export async function callLLMJson<T>(
     if (!apiKey) {
       throw new Error('請點擊右上角「模型」設定您的 Groq API Key。');
     }
-    const model = (config.model || 'openai/gpt-oss-120b').trim();
+    const model = (config.model || 'llama-3.3-70b-versatile').trim();
 
-    // GPT-OSS 與推理模型在 Groq 上使用標準 messages 呼叫最穩定，不強加可能導致 400 的參數
+    const isReasoningOrGptOss =
+      model.toLowerCase().includes('gpt-oss') ||
+      model.toLowerCase().includes('deepseek') ||
+      model.toLowerCase().includes('qwq') ||
+      model.toLowerCase().includes('r1');
+
+    // DeepSeek R1 / 推理模型在低溫下容易進入循環死鎖輸出空白，官方推薦 0.6
+    const effectiveTemperature = isReasoningOrGptOss
+      ? Math.max(0.6, Math.min(temperature, 0.7))
+      : temperature;
+
+    // GPT-OSS 與推理模型若使用 system role 可能會丟失輸出或返回空白，合併至 user
+    const messages = isReasoningOrGptOss
+      ? [
+          {
+            role: 'user',
+            content: `${systemPrompt}\n\n---\n\n請務必依上述規則直接以合法 JSON 回傳：\n\n${userPrompt}`,
+          },
+        ]
+      : [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ];
+
     const makeGroqCall = async (useJsonFormat: boolean) => {
       const payload: Record<string, unknown> = {
         model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature,
+        messages,
+        temperature: effectiveTemperature,
+        max_tokens: 4096,
       };
       if (useJsonFormat) {
         payload.response_format = { type: 'json_object' };
@@ -144,12 +165,6 @@ export async function callLLMJson<T>(
       });
     };
 
-    const isReasoningOrGptOss =
-      model.toLowerCase().includes('gpt-oss') ||
-      model.toLowerCase().includes('deepseek') ||
-      model.toLowerCase().includes('qwq') ||
-      model.toLowerCase().includes('r1');
-
     // 先嘗試呼叫；若因 response_format 報 400，自動降級為純文字提取 JSON
     let res = await makeGroqCall(!isReasoningOrGptOss);
     if (!res.ok && !isReasoningOrGptOss && res.status === 400) {
@@ -164,10 +179,39 @@ export async function callLLMJson<T>(
     }
 
     const data = await res.json();
-    const text = data?.choices?.[0]?.message?.content || '';
-    if (!text) {
-      throw new Error('Groq API 回傳空白內容');
+    const choice = data?.choices?.[0];
+    let text = choice?.message?.content || '';
+
+    // 若 content 為空（常見於 DeepSeek R1 / 推理模型），檢查 reasoning 欄位
+    if (!text && choice?.message?.reasoning) {
+      text = choice.message.reasoning;
     }
+    if (!text && (choice?.message as { reasoning_content?: string })?.reasoning_content) {
+      text = (choice.message as { reasoning_content?: string }).reasoning_content || '';
+    }
+
+    // 若依然為空且剛剛使用了 response_format，嘗試不帶 response_format 重試一次
+    if (!text && !isReasoningOrGptOss) {
+      const retryRes = await makeGroqCall(false);
+      if (retryRes.ok) {
+        const retryData = await retryRes.json();
+        const retryChoice = retryData?.choices?.[0];
+        text =
+          retryChoice?.message?.content ||
+          retryChoice?.message?.reasoning ||
+          (retryChoice?.message as { reasoning_content?: string })?.reasoning_content ||
+          '';
+      }
+    }
+
+    if (!text) {
+      console.error('[Groq API Empty Response Debug]', JSON.stringify(data, null, 2));
+      const finishReason = choice?.finish_reason || 'unknown';
+      throw new Error(
+        `Groq API 回傳空白內容 [模型: ${model}, 結束狀態: ${finishReason}]。建議在頂部模型設定切換為「llama-3.3-70b-versatile」。`
+      );
+    }
+
     return extractJsonFromText<T>(text);
   }
 
