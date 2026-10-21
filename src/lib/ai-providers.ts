@@ -154,7 +154,6 @@ export async function callLLMJson<T>(
           messages,
           temperature: effectiveTemperature,
           max_tokens: 8192,
-          max_completion_tokens: 8192,
         };
         if (useJsonFormat) {
           payload.response_format = { type: 'json_object' };
