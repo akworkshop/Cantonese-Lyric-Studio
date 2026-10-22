@@ -2820,25 +2820,25 @@ export default function CantoneseLyricStudioPage() {
                   💡 填詞實務高頻字特別設定
                 </div>
                 <div className="text-zinc-600">
-                  <strong>更 (3)</strong>、<strong>我 (4)</strong>、<strong>你 (4)</strong>、<strong>祢 (4)</strong>、<strong>主 (3)</strong>、<strong>祂 (3)</strong>、<strong>神 (0)</strong>、<strong>掌權 (30)</strong>、<strong>患難 (22)</strong>、<strong>困境 (43)</strong>、<strong>驚惶 (30)</strong>
+                  <strong>更 (更深 4 / 更新 3)</strong>、<strong>我 (4)</strong>、<strong>你 (4)</strong>、<strong>祢 (4)</strong>、<strong>主 (3)</strong>、<strong>祂 (3)</strong>、<strong>神 (0)</strong>、<strong>掌權 (30)</strong>、<strong>患難 (22)</strong>、<strong>困境 (43)</strong>、<strong>驚惶 (30)</strong>
                   <br />
-                  例句：祢已掌權 (<code className="font-mono">4230</code>)、不用驚惶 (<code className="font-mono">3230</code>)、靠著祢得勝 (<code className="font-mono">42434</code>)、主愛勝患難 (<code className="font-mono">34422</code>)
+                  例句：祢已掌權 (<code className="font-mono">4230</code>)、不用驚惶 (<code className="font-mono">3230</code>)、靠著祢得勝 (<code className="font-mono">42434</code>)、主愛勝患難 (<code className="font-mono">34422</code>)、愛祢更深 (<code className="font-mono">3443</code>)、更新我生命 (<code className="font-mono">33422</code>)
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200">
                 <div className="font-bold text-zinc-900 mb-1">
-                  3（最高音）— 包含「更」及陰平、陰上、陰入聲
+                  3（最高音）— 包含「更新/更改 之更」及陰平、陰上、陰入聲
                 </div>
                 <div className="text-zinc-600">
-                  例字：更、掌、驚、境、主、祂、心、恩、深、真、光、歌、天、生、手、身、家、高、舉、謙、卑、清、新、風、星、穩、苦、君
+                  例字：更(更新)、掌、驚、境、主、祂、心、恩、深、真、光、歌、天、生、手、身、家、高、舉、謙、卑、清、新、風、星、穩、苦、君
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200">
                 <div className="font-bold text-zinc-900 mb-1">
-                  4（次高音）— 包含「我、你、祢」及陰去、中入聲
+                  4（次高音）— 包含「我、你、祢」、「更深/更愛/更加 之更」及陰去、中入聲
                 </div>
                 <div className="text-zinc-600">
-                  例字：我、你、祢、怕、困、勝、愛、信、靠、向、敬、拜、讚、看、唱、救、聖、盼、賜、照、獻、細、破、曉、痛、暗、蔭、應
+                  例字：我、你、祢、更(更深/更愛)、怕、困、勝、愛、信、靠、向、敬、拜、讚、看、唱、救、聖、盼、賜、照、獻、細、破、曉、痛、暗、蔭、應
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200">

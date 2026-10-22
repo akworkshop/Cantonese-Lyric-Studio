@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   buildDynamicLexiconPrompt,
   getVerifiedCandidatesForGroupPattern,
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
    - 檢視整句歌詞：「${lineText}」，你推薦的候選詞替換掉「${currentGroupText}」之後，必須與同一句的其他詞組連成一句文法自然、一聽就懂、意境深刻的詩句！
 4. **【字數與 0243 聲調必須 100% 吻合】**：
    - 目標數字譜為「${cleanTargetPattern}」（共 ${cleanTargetPattern.length} 個漢字）。
-   - 0=陽平，2=陽去/陽入等，4=含「我、你、祢」及陰去/中入，3=含「更」及陰平/陰上/陰入。
+   - 0=陽平，2=陽去/陽上(如「美」)/陽入等，4=含「我、你、祢」、「更(更深/更愛)」及陰去/中入，3=含「更(更新/更改)」及陰平/陰上/陰入。
 5. **【鎖定字保留】**：
    ${
      hasLockedChars

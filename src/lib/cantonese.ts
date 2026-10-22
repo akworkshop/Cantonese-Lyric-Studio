@@ -15,7 +15,6 @@ const THEOLOGICAL_JYUTPING_OVERRIDES: Record<string, string[]> = {
   祢: ['nei5'],
   你: ['nei5'],
   我: ['ngo5'],
-  更: ['gang1'],
   主: ['zyu2'],
   神: ['san4'],
   聖: ['sing3'],
@@ -235,14 +234,12 @@ export function getCharJyutpingCandidates(char: string): string[] {
       candidates.add(primary);
     }
     const candList = ToJyutping.getJyutpingCandidates(trimmed);
-    if (
-      candidates.size === 0 &&
-      candList &&
-      candList.length > 0 &&
-      Array.isArray(candList[0][1]) &&
-      candList[0][1][0]
-    ) {
-      candidates.add(candList[0][1][0]);
+    if (candList && candList.length > 0 && Array.isArray(candList[0][1])) {
+      for (const cand of candList[0][1]) {
+        if (cand && /^[a-z]+[1-6]$/.test(cand)) {
+          candidates.add(cand);
+        }
+      }
     }
   } catch {
     // ignore rare symbols
@@ -310,13 +307,15 @@ export function evaluateVocalErgonomics(
 /**
  * 填詞實務專屬 0243 聲階覆寫表
  * - 「我、你、祢」在粵語詩歌填詞實務中歸入 4 聲（次高音）
- * - 「更」在粵語詩歌填詞實務（如：更新、更深、更愛、更高、更美、更親近）統一歸入 3 聲（gang1 / gaang1）
+ * - 「更」字為破音字：
+ *    - 作副詞「更加」（如：更深、更高、更愛、更加）讀 gang3（陰去，歸入 4 聲）
+ *    - 作動詞「更新/更改」（如：更新、更改、更替）讀 gang1（陰平，歸入 3 聲）
+ *    由上下文或目標聲調自動對位，不再硬性鎖死為單一聲階。
  */
 const CUSTOM_0243_TONE_OVERRIDES: Record<string, string> = {
   我: '4',
   你: '4',
   祢: '4',
-  更: '3',
 };
 
 /**
@@ -327,7 +326,8 @@ export function analyzeCharToken(
   expectedTone: string,
   isGroupEnd = false,
   existingId?: string,
-  preserveLockedStatus?: TokenStatus
+  preserveLockedStatus?: TokenStatus,
+  contextJyutping?: string
 ): LyricToken {
   const trimmedChar = char.trim();
   const candidates = getCharJyutpingCandidates(trimmedChar);
@@ -347,7 +347,12 @@ export function analyzeCharToken(
 
   const customTone = CUSTOM_0243_TONE_OVERRIDES[trimmedChar];
 
-  const parsedList = candidates.map((jp) => {
+  const effectiveCandidates = [...candidates];
+  if (contextJyutping && !effectiveCandidates.includes(contextJyutping)) {
+    effectiveCandidates.unshift(contextJyutping);
+  }
+
+  const parsedList = effectiveCandidates.map((jp) => {
     const info = jyutpingTo0243(jp);
     if (customTone) {
       return {
@@ -365,9 +370,22 @@ export function analyzeCharToken(
 
   const allPossibleTones = Array.from(new Set(parsedList.map((p) => p.tone0243)));
 
-  // 若多音字中有任一讀音符合 expectedTone，優先選取該讀音！否則選第一常讀音
-  const matchedReading =
-    parsedList.find((p) => p.tone0243 === expectedTone) || parsedList[0];
+  // 選音優先級：
+  // 1. 若有上下文語境讀音 (contextJyutping)，且該詞音義已固定（如更深->gang3, 更新->gang1），以語境讀音為主
+  // 2. 若無語境讀音或單字查詢，且多音字中有任一讀音符合 expectedTone，選取該協音讀音
+  // 3. 否則採用第一常讀音
+  let matchedReading = parsedList[0];
+  if (contextJyutping) {
+    const contextMatch = parsedList.find((p) => p.jp === contextJyutping);
+    if (contextMatch) {
+      matchedReading = contextMatch;
+    }
+  } else {
+    const toneMatch = parsedList.find((p) => p.tone0243 === expectedTone);
+    if (toneMatch) {
+      matchedReading = toneMatch;
+    }
+  }
 
   const isToneMatch = matchedReading.tone0243 === expectedTone;
   const ergonomics = evaluateVocalErgonomics(
@@ -432,12 +450,58 @@ export function buildLyricLinesFromPatternsAndTexts(
       const lineGroupTexts = lyricTexts?.[lineIdx] || [];
       const existingLine = existingLines?.[lineIdx];
 
+      // 提取整行文字，獲取全句上下文粵拼（例如「更深」-> gang3, 「更新」-> gang1）
+      const fullLineChars: { char: string; gIdx: number; tIdx: number }[] = [];
+      groupPatterns.forEach((gPattern, gIdx) => {
+        const rawGroupText = (lineGroupTexts[gIdx] || '').replace(/\s+/g, '');
+        const chars = Array.from(rawGroupText);
+        for (let tIdx = 0; tIdx < gPattern.length; tIdx++) {
+          const ch = chars[tIdx] || '';
+          if (ch && ch !== '＿') {
+            fullLineChars.push({ char: ch, gIdx, tIdx });
+          }
+        }
+      });
+
+      const fullLineText = fullLineChars.map((item) => item.char).join('');
+      const contextJpMap: Record<string, string> = {};
+      try {
+        if (fullLineText) {
+          const list = ToJyutping.getJyutpingList(fullLineText);
+          if (list && list.length === fullLineChars.length) {
+            list.forEach((item, idx) => {
+              const meta = fullLineChars[idx];
+              if (meta && item && item[1]) {
+                contextJpMap[`${meta.gIdx}-${meta.tIdx}`] = item[1];
+              }
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+
       const groups: LyricWordGroup[] = groupPatterns.map((gPattern, gIdx) => {
         const rawGroupText = (lineGroupTexts[gIdx] || '').replace(/\s+/g, '');
         const chars = Array.from(rawGroupText);
         const existingGroup = existingLine?.groups?.[gIdx];
 
+        // 若整行上下文未覆蓋，亦可嘗試從該組文字取得詞組上下文
+        let groupJpList: [string, string][] = [];
+        try {
+          if (rawGroupText) {
+            const list = ToJyutping.getJyutpingList(rawGroupText);
+            if (list && list.length === chars.length) {
+              groupJpList = list as [string, string][];
+            }
+          }
+        } catch {
+          // ignore
+        }
+
         const tokens: LyricToken[] = Array.from(gPattern).map((expectedTone, tIdx) => {
+          const contextJp =
+            contextJpMap[`${gIdx}-${tIdx}`] || groupJpList[tIdx]?.[1];
           const existingToken = existingGroup?.tokens?.[tIdx];
           if (existingToken && existingToken.status === 'locked') {
             return analyzeCharToken(
@@ -445,7 +509,8 @@ export function buildLyricLinesFromPatternsAndTexts(
               expectedTone,
               tIdx === gPattern.length - 1,
               existingToken.id,
-              'locked'
+              'locked',
+              contextJp
             );
           }
 
@@ -465,7 +530,9 @@ export function buildLyricLinesFromPatternsAndTexts(
             char,
             expectedTone,
             isGroupEnd,
-            `L${lineIdx}-G${gIdx}-T${tIdx}`
+            `L${lineIdx}-G${gIdx}-T${tIdx}`,
+            undefined,
+            contextJp
           );
         });
 
@@ -502,9 +569,27 @@ export function verifyPhraseAgainstPattern(
   const cleanChars = Array.from(phrase.replace(/[^\u4e00-\u9fa5]/g, ''));
   const targetTones = Array.from(targetPattern.trim());
 
+  let phraseJpList: [string, string][] = [];
+  try {
+    const list = ToJyutping.getJyutpingList(cleanChars.join(''));
+    if (list && list.length === cleanChars.length) {
+      phraseJpList = list as [string, string][];
+    }
+  } catch {
+    // ignore
+  }
+
   const tokens: LyricToken[] = targetTones.map((expected, idx) => {
     const char = cleanChars[idx] || '？';
-    return analyzeCharToken(char, expected, idx === targetTones.length - 1);
+    const contextJp = phraseJpList[idx]?.[1];
+    return analyzeCharToken(
+      char,
+      expected,
+      idx === targetTones.length - 1,
+      undefined,
+      undefined,
+      contextJp
+    );
   });
 
   const actualPattern = tokens.map((t) => t.actualTone).join('');
@@ -548,17 +633,31 @@ export function getPhrasePrimary0243(phrase: string): {
   jyutpings: string[];
   lastCharOpenEnding: boolean;
 } {
-  const chars = Array.from(phrase.replace(/[^\u4e00-\u9fa5]/g, ''));
+  const clean = phrase.replace(/[^\u4e00-\u9fa5]/g, '');
+  const chars = Array.from(clean);
   const tones: string[] = [];
   const jyutpings: string[] = [];
 
-  chars.forEach((ch) => {
-    const cands = getCharJyutpingCandidates(ch);
-    const primary = cands[0] || '';
-    const info = jyutpingTo0243(primary);
+  let phraseList: [string, string][] = [];
+  try {
+    const list = ToJyutping.getJyutpingList(clean);
+    if (list && list.length === chars.length) {
+      phraseList = list as [string, string][];
+    }
+  } catch {
+    phraseList = [];
+  }
+
+  chars.forEach((ch, idx) => {
     const customTone = CUSTOM_0243_TONE_OVERRIDES[ch];
+    let chosenJp = phraseList[idx]?.[1];
+    if (!chosenJp) {
+      const cands = getCharJyutpingCandidates(ch);
+      chosenJp = cands[0] || '';
+    }
+    const info = jyutpingTo0243(chosenJp);
     tones.push(customTone || info.tone0243);
-    jyutpings.push(primary);
+    jyutpings.push(chosenJp);
   });
 
   const lastJp = jyutpings[jyutpings.length - 1] || '';
@@ -573,7 +672,7 @@ export function getPhrasePrimary0243(phrase: string): {
 }
 
 /**
- * 單字 0243 嚴格分類庫（強化「更(3聲)、我/你/祢(4聲)、主/祂(3聲)、神(0聲)」與 CantonHymn 詩意字庫）
+ * 單字 0243 嚴格分類庫（強化「更(副詞gang3->4聲 / 動詞gang1->3聲)、我/你/祢(4聲)、主/祂(3聲)、神(0聲)」與 CantonHymn 詩意字庫）
  */
 export const VERIFIED_CANTONESE_WORSHIP_CHARS: Record<string, string[]> = {
   '0': [
@@ -603,7 +702,7 @@ export const VERIFIED_CANTONESE_WORSHIP_CHARS: Record<string, string[]> = {
     '漸(zim6)', '未(mei6)', '漫(maan6)', '座(zo6)', '暴(bou6)', '著(zoek6)',
   ],
   '4': [
-    '我(ngo5->4)', '你(nei5->4)', '祢(nei5->4)', '怕(paa3)', '困(kwan3)', '勝(sing3)',
+    '我(ngo5->4)', '你(nei5->4)', '祢(nei5->4)', '更(gang3)', '怕(paa3)', '困(kwan3)', '勝(sing3)',
     '愛(ngoi3)', '信(seon3)', '靠(kaau3)', '向(hoeng3)', '敬(ging3)', '拜(baai3)',
     '讚(zaan3)', '看(hon3)', '唱(coeng3)', '救(gau3)', '聖(sing3)', '盼(paan3)',
     '賜(ci3)', '照(ziu3)', '獻(hin3)', '見(gin3)', '證(zing3)', '進(zeon3)',
@@ -1099,8 +1198,8 @@ export function buildDynamicLexiconPrompt(
   lines.push('【本地粵拼引擎 100% 驗證之 0243 協音常用單字】：');
   lines.push(`- 數字 0（陽平，最低音）：${VERIFIED_CANTONESE_WORSHIP_CHARS['0'].join('、')}`);
   lines.push(`- 數字 2（中低音，含「在、患、難、懼、是、大、願、伴、望、靜」）：${VERIFIED_CANTONESE_WORSHIP_CHARS['2'].join('、')}`);
-  lines.push(`- 數字 4（次高音，含「我、你、祢、怕、困、勝、愛、信、靠、向、敬、拜、讚、盼、賜、照」）：${VERIFIED_CANTONESE_WORSHIP_CHARS['4'].join('、')}`);
-  lines.push(`- 數字 3（最高音，含「更、掌、驚、境、主、祂、心、恩、深、真、光、歌、手、穩」）：${VERIFIED_CANTONESE_WORSHIP_CHARS['3'].join('、')}`);
+  lines.push(`- 數字 4（次高音，含「我、你、祢」、「更(更深/更愛/更加)」、怕、困、勝、愛、信、靠、向、敬、拜、讚、盼、賜、照）：${VERIFIED_CANTONESE_WORSHIP_CHARS['4'].join('、')}`);
+  lines.push(`- 數字 3（最高音，含「更(更新/更改)」、掌、驚、境、主、祂、心、恩、深、真、光、歌、手、穩）：${VERIFIED_CANTONESE_WORSHIP_CHARS['3'].join('、')}`);
 
   const groupHints: string[] = [];
   uniqueGroupPatterns.forEach((gp) => {
