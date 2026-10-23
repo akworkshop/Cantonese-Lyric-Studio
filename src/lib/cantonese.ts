@@ -6,6 +6,7 @@ import {
   TokenStatus,
   VocalErgonomicsInfo,
 } from '@/types/lyric';
+import { ALL_EXPANDED_WORSHIP_CORPUS } from '@/lib/corpus';
 
 /**
  * 基督教神學與粵語詩歌常用字詞優先審音表（補充神學代名詞與詩歌文讀首選音）
@@ -847,6 +848,9 @@ export const RAW_CANTONESE_WORSHIP_CORPUS: string[] = [
   '神羔羊', '看釘痕', '代我死', '付代價', '恩浩大', '愛深長', '銘於心', '永難忘', '贖我身', '賜新生',
   '被殺羔羊', '十架換來', '寶血代贖', '恩典浩大', '主愛深廣', '無盡恩情', '厚愛難忘', '銘記深恩', '白白赦免', '完全洗淨', '罪痕抹去', '重價買贖', '釘痕雙手', '肋旁創傷', '長闊高深', '大愛無邊', '恩深似海', '勝過千山', '何等奇妙', '甘願捨身',
   '因祢受鞭傷', '因祢受刑罰', '使我得平安', '使我得醫治', '大愛長闊深', '神羔羊配得', '永誌十架恩', '感謝捨命愛', '主愛深莫測', '銘記十架恩',
+
+  // === 14. 擴展語料庫（CantonHymn 經典、聖經詩篇金句、神學大辭典、當代敬拜） ===
+  ...ALL_EXPANDED_WORSHIP_CORPUS,
 ];
 
 let cachedPatternMap: Map<string, string[]> | null = null;
