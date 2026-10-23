@@ -1272,7 +1272,7 @@ export function buildDynamicLexiconPrompt(
     const verifiedExamples = getVerifiedCandidatesForGroupPattern(gp, 12, false, themeText);
     if (verifiedExamples.length > 0) {
       groupHints.push(
-        `  * 區塊 [${gp}]（${gp.length}字）協音結構參考（請優先依主題故事自行造句，勿照抄與主題無關的詞）：${verifiedExamples.join('、')}`
+        `  * 區塊 [${gp}]（${gp.length}字）100%啱音積木推薦（強烈建議優先調用或作為基底，將故事意境自然融入；若自創新詞必須嚴格符合各字聲調）：${verifiedExamples.join('、')}`
       );
     }
   });

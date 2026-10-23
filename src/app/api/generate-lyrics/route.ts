@@ -372,6 +372,43 @@ ${
       }
     }
 
+    // Stage 3: 若 AI 修復後仍有未完全協音的殘餘區塊，由本地 100% 驗證詞庫進行智能語意槽位兜底替換
+    if (currentEval.errorDetails.length > 0) {
+      currentEval.errorDetails.forEach((err) => {
+        const { lineIdx, groupIdx, targetPattern } = err;
+        const verifiedCandidates = getVerifiedCandidatesForGroupPattern(
+          targetPattern,
+          20,
+          false,
+          themeContext
+        );
+        if (verifiedCandidates.length > 0) {
+          const existingGroup = existingLines[lineIdx]?.groups?.[groupIdx];
+          // 若有已鎖定的字 (🟢 locked)，優先篩選符合鎖定字之候選詞
+          const matchingCand = verifiedCandidates.find((cand) => {
+            const candChars = Array.from(cand);
+            if (candChars.length !== targetPattern.length) return false;
+            if (!existingGroup) return true;
+            return targetPattern.split('').every((_, tIdx) => {
+              const tok = existingGroup.tokens?.[tIdx];
+              if (tok && tok.status === 'locked' && tok.char && tok.char !== '＿') {
+                return candChars[tIdx] === tok.char;
+              }
+              return true;
+            });
+          });
+
+          if (matchingCand) {
+            currentGroupTexts[lineIdx][groupIdx] = matchingCand;
+          } else if (verifiedCandidates[0]) {
+            currentGroupTexts[lineIdx][groupIdx] = verifiedCandidates[0];
+          }
+        }
+      });
+      // 重新計算最終協音準確率
+      currentEval = evaluateAccuracy(currentGroupTexts);
+    }
+
     const lines = buildLyricLinesFromPatternsAndTexts(
       rawLines,
       currentGroupTexts,
