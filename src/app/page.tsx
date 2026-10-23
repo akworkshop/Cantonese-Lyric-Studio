@@ -320,6 +320,10 @@ export default function CantoneseLyricStudioPage() {
 
   // 初始化載入預設詩歌、儲存的專案列表與 API Keys，並監聽 Supabase 登入狀態
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+
     const initialLines = buildLyricLinesFromPatternsAndTexts(
       PRESET_SONGS[0].patternText.split('\n'),
       PRESET_SONGS[0].sampleTexts
@@ -1016,6 +1020,9 @@ export default function CantoneseLyricStudioPage() {
       lines
     );
     commitLinesUpdate(newLines);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
     showToast('已依歌曲主題與 CantonHymn 協音詞庫完成 100% 啱音組詞');
   };
 
@@ -1023,6 +1030,9 @@ export default function CantoneseLyricStudioPage() {
   const handleAIGenerateLyrics = async () => {
     setErrorBanner(null);
     setIsGeneratingLyrics(true);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
     try {
       const res = await fetch('/api/generate-lyrics', {
         method: 'POST',
@@ -1320,9 +1330,9 @@ export default function CantoneseLyricStudioPage() {
         </div>
       )}
 
-      {/* 極簡純白頂部導航列（含建立新專案、儲存與讀取專案按鈕） */}
-      <header className="sticky top-0 z-30 h-14 bg-white/95 backdrop-blur-md border-b border-zinc-200 px-4 sm:px-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
+      {/* 極簡純白頂部導航列（支援手機響應式橫滑與自適應緊湊佈局） */}
+      <header className="sticky top-0 z-30 h-14 bg-white/95 backdrop-blur-md border-b border-zinc-200 px-2.5 sm:px-6 flex items-center justify-between gap-1.5 sm:gap-3 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <button
             onClick={() => setSidebarOpen((p) => !p)}
             className="p-2 rounded-lg hover:bg-zinc-100 text-zinc-600 transition"
@@ -1335,7 +1345,7 @@ export default function CantoneseLyricStudioPage() {
             )}
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center">
               <Music className="w-3.5 h-3.5" />
             </div>
@@ -1344,7 +1354,7 @@ export default function CantoneseLyricStudioPage() {
             </span>
           </div>
 
-          <div className="h-4 w-px bg-zinc-200 mx-1" />
+          <div className="h-4 w-px bg-zinc-200 mx-0.5 sm:mx-1" />
 
           {/* 專案管理快捷按鈕：新專案 / 讀取專案 / 儲存 */}
           <button
@@ -1356,23 +1366,24 @@ export default function CantoneseLyricStudioPage() {
               });
               setShowNewProjectModal(true);
             }}
-            className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 text-xs font-medium flex items-center gap-1 transition"
+            className="px-2 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 text-xs font-medium flex items-center gap-1 shrink-0 transition"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>新專案</span>
+            <span className="hidden sm:inline">新專案</span>
           </button>
 
           <button
             onClick={() => setShowProjectModal(true)}
-            className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 text-xs font-medium flex items-center gap-1.5 transition"
+            className="px-2 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 text-xs font-medium flex items-center gap-1 shrink-0 transition"
           >
             <FolderOpen className="w-3.5 h-3.5 text-zinc-600" />
-            <span>讀取專案 ({savedProjects.length})</span>
+            <span className="hidden md:inline">讀取專案</span>
+            <span className="text-[11px] text-zinc-500">({savedProjects.length})</span>
           </button>
 
           <button
             onClick={() => handleSaveCurrentProject(false)}
-            className="px-2.5 py-1.5 rounded-lg hover:bg-zinc-100 text-zinc-700 text-xs font-medium flex items-center gap-1 transition"
+            className="px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-zinc-100 text-zinc-700 text-xs font-medium flex items-center gap-1 shrink-0 transition"
             title="儲存目前專案進度"
           >
             <Save className="w-3.5 h-3.5 text-zinc-500" />
@@ -1381,10 +1392,10 @@ export default function CantoneseLyricStudioPage() {
         </div>
 
         {/* 右側精簡工具按鈕 */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={() => setShowToneGuideModal(true)}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-100 transition flex items-center gap-1"
+            className="px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-100 transition flex items-center gap-1 shrink-0"
           >
             <BookOpen className="w-3.5 h-3.5 text-zinc-500" />
             <span className="hidden lg:inline">0243 聲調表</span>
@@ -1392,10 +1403,11 @@ export default function CantoneseLyricStudioPage() {
 
           <button
             onClick={() => setShowSettingsModal(true)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 text-zinc-800 transition flex items-center gap-1.5"
+            className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 text-zinc-800 transition flex items-center gap-1.5 shrink-0"
           >
             <Settings className="w-3.5 h-3.5 text-zinc-600" />
-            <span>模型：{aiConfig.provider.toUpperCase()}</span>
+            <span className="hidden sm:inline">模型：</span>
+            <span>{aiConfig.provider.toUpperCase()}</span>
           </button>
 
           <div className="h-4 w-px bg-zinc-200 mx-0.5 hidden sm:block" />
@@ -1419,7 +1431,7 @@ export default function CantoneseLyricStudioPage() {
 
           <button
             onClick={() => handleCopyLyrics(false)}
-            className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition flex items-center gap-1.5"
+            className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition flex items-center gap-1.5 shrink-0"
           >
             <Copy className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">複製歌詞</span>
@@ -1429,7 +1441,7 @@ export default function CantoneseLyricStudioPage() {
 
           {/* 👤 帳號登入與訂閱狀態按鈕 (Supabase Auth & Subscription Tier) */}
           {currentUser ? (
-            <div className="flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200/80 rounded-xl px-2.5 py-1 transition border border-zinc-200/60">
+            <div className="flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200/80 rounded-xl px-2.5 py-1 transition border border-zinc-200/60 shrink-0">
               <div className="w-5 h-5 rounded-full bg-zinc-900 text-white flex items-center justify-center text-[10px] font-bold">
                 {currentUser.email?.[0]?.toUpperCase() || 'U'}
               </div>
@@ -1461,11 +1473,12 @@ export default function CantoneseLyricStudioPage() {
                 setAuthSuccessMsg(null);
                 setShowAuthModal(true);
               }}
-              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1.5 shadow-xs transition"
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1.5 shadow-xs shrink-0 transition"
               title="登入 Supabase 帳號，支援跨電腦／手機雲端同步詩歌專案"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>登入 / 雲端同步</span>
+              <span className="hidden sm:inline">登入 / 雲端同步</span>
+              <span className="sm:hidden">登入</span>
             </button>
           )}
         </div>
@@ -1494,9 +1507,30 @@ export default function CantoneseLyricStudioPage() {
 
       {/* 主內容區：可收合側欄 + 超寬敞歌詞畫布 */}
       <div className="flex-1 flex items-start max-w-[1600px] w-full mx-auto">
-        {/* 左側輸入欄（可收合） */}
+        {/* 左側輸入欄（支援桌面常駐與手機滑出式抽屜 Drawer） */}
         {sidebarOpen && (
-          <aside className="w-80 shrink-0 bg-white border-r border-zinc-200 min-h-[calc(100vh-3.5rem)] p-5 flex flex-col gap-5">
+          <>
+            {/* 手機版半透明遮罩背景 */}
+            <div
+              onClick={() => setSidebarOpen(false)}
+              className="fixed inset-0 bg-black/40 z-40 lg:hidden backdrop-blur-xs transition-opacity"
+            />
+
+            <aside className="fixed inset-y-0 left-0 z-50 w-[88vw] max-w-xs bg-white border-r border-zinc-200 overflow-y-auto p-4 sm:p-5 flex flex-col gap-5 shadow-2xl lg:static lg:z-auto lg:shadow-none lg:w-80 lg:shrink-0 lg:min-h-[calc(100vh-3.5rem)] transition-all">
+              {/* 手機版頂部標題與關閉按鈕 */}
+              <div className="flex items-center justify-between lg:hidden pb-2.5 border-b border-zinc-100">
+                <span className="font-semibold text-sm text-zinc-900 flex items-center gap-1.5">
+                  <Music className="w-4 h-4 text-zinc-700" />
+                  歌曲設定與 0243 譜
+                </span>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-500"
+                  title="關閉側邊欄"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             {/* 範例快速選擇 */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -1594,27 +1628,28 @@ export default function CantoneseLyricStudioPage() {
               </button>
             </div>
           </aside>
+          </>
         )}
 
-        {/* 中央超寬敞歌詞畫布 */}
+        {/* 中央超寬敞歌詞畫布（支援手機響應式邊距與觸控橫滑） */}
         <main
-          className="flex-1 p-6 sm:p-8 lg:p-10 min-w-0"
+          className="flex-1 p-3.5 sm:p-8 lg:p-10 min-w-0"
           onClick={() => {
             setSelectedRef(null);
             setEditingGroupRef(null);
           }}
         >
           {/* 歌曲標題與極簡狀態列 */}
-          <div className="max-w-5xl mx-auto mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-zinc-200 pb-5">
+          <div className="max-w-5xl mx-auto mb-6 sm:mb-8 flex flex-wrap items-end justify-between gap-3 sm:gap-4 border-b border-zinc-200 pb-4 sm:pb-5">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900">
                 {title || '無題詩歌'}
               </h1>
               <p className="text-xs text-zinc-500 mt-1 max-w-2xl">{meaning}</p>
             </div>
 
             {/* 簡潔清楚的色塊圖例 */}
-            <div className="flex items-center gap-4 text-xs text-zinc-600 bg-white px-3.5 py-2 rounded-xl border border-zinc-200 shadow-sm">
+            <div className="flex items-center gap-3 sm:gap-4 text-xs text-zinc-600 bg-white px-3 sm:px-3.5 py-2 rounded-xl border border-zinc-200 shadow-sm flex-wrap">
               <span className="font-semibold text-zinc-900">
                 啱音率 {projectMetrics.accuracy}%
               </span>
@@ -1635,7 +1670,7 @@ export default function CantoneseLyricStudioPage() {
           </div>
 
           {/* 歌詞行列表 */}
-          <div className="max-w-5xl mx-auto space-y-6">
+          <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
             {lines.map((line, lIdx) => {
               const isLineActive = selectedRef?.lineIdx === lIdx;
               const activeGroup =
@@ -1651,19 +1686,19 @@ export default function CantoneseLyricStudioPage() {
                 <div
                   key={line.lineId}
                   onClick={(e) => e.stopPropagation()}
-                  className={`bg-white rounded-2xl border transition p-5 ${
+                  className={`bg-white rounded-2xl border transition p-3.5 sm:p-5 ${
                     isLineActive
                       ? 'border-zinc-400 shadow-md'
                       : 'border-zinc-200/90 shadow-sm hover:border-zinc-300'
                   }`}
                 >
                   {/* 行號與極簡字詞橫排 */}
-                  <div className="flex items-center gap-4 overflow-x-auto pb-1">
-                    <div className="w-7 shrink-0 text-xs font-mono font-semibold text-zinc-400 select-none">
+                  <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto pb-1">
+                    <div className="w-6 sm:w-7 shrink-0 text-xs font-mono font-semibold text-zinc-400 select-none">
                       {String(lIdx + 1).padStart(2, '0')}
                     </div>
 
-                    <div className="flex items-center gap-5 flex-nowrap">
+                    <div className="flex items-center gap-2.5 sm:gap-5 flex-nowrap">
                       {line.groups.map((group, gIdx) => {
                         const isGroupSelected =
                           selectedRef?.lineIdx === lIdx &&
