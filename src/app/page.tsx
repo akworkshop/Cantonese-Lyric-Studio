@@ -1035,6 +1035,21 @@ export default function CantoneseLyricStudioPage() {
           aiConfig,
         }),
       });
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        if (
+          res.status === 504 ||
+          text.includes('FUNCTION_INVOCATION_TIMEOUT') ||
+          text.includes('Gateway Timeout')
+        ) {
+          throw new Error(
+            'AI 生成超時 (504 Timeout)。請稍後重試，或可在設定中將模型切換為極速模型（如 Gemini 2.5 Flash 或 Groq Llama 3.3）'
+          );
+        }
+        throw new Error(`伺服器回應異常 (${res.status})，請確認網路或 API Key 設定`);
+      }
+
       const data = await res.json();
       if (!res.ok || data.error) {
         throw new Error(data.error || 'AI 生成失敗');
@@ -1179,6 +1194,19 @@ export default function CantoneseLyricStudioPage() {
           aiConfig,
         }),
       });
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        if (
+          res.status === 504 ||
+          text.includes('FUNCTION_INVOCATION_TIMEOUT') ||
+          text.includes('Gateway Timeout')
+        ) {
+          throw new Error('AI 建議請求超時 (504 Timeout)，請稍後重試或更換極速模型');
+        }
+        throw new Error(`伺服器回應異常 (${res.status})`);
+      }
+
       const data = await res.json();
       if (!res.ok || data.error) {
         throw new Error(data.error || '無法取得替換建議');
