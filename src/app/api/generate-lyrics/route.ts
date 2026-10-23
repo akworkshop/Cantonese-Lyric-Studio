@@ -108,7 +108,10 @@ export async function POST(req: NextRequest) {
        - 從「抽象神學」轉為「具體畫面與光景」（如晨光照亮、寶座長存、活水湧流）；
        - **音階 100% 嚴格保留，視角靈活轉換，文法 100% 順暢，絕不夾硬砌字！**
 
-3. **【拒絕空泛套話罐頭歌詞（深入具體處境故事，層層遞進）】**：
+3. **【拒絕空泛套話與過度重複（相同詞彙全曲最多出現三次）】**：
+   - **詞彙多樣性鐵律（嚴禁洗腦單調）**：
+     - 除核心神聖代名詞（「我」、「你」、「祢」、「祂」、「主」、「神」）及常用助詞之外，**任何具體的 2～4 字實詞／詞組（例如「恩典」、「十架」、「讚美」、「榮美」、「救贖」、「盼望」、「深恩」、「安息」、「風浪」、「寶血」等），在整首歌曲中絕對不可重複超過三次！**
+     - 填詞人必須展現豐富的語言修養，廣泛運用同義詞或轉換表達視角進行遞進（例如描寫神的恩惠，輪流使用「主愛」、「慈愛」、「厚恩」、「深恩」、「恩惠」、「眷顧」；描寫讚頌，輪流使用「稱頌」、「歌唱」、「敬拜」、「宣揚」、「高唱」等）。
    - **嚴禁萬用罐頭套話**：嚴禁整首歌只會反覆填寫「恩典深／讚美神／主恩多」這種空洞無物的套話！
    - **緊扣用戶故事與心路歷程**：用戶寫下的【歌曲含意／想表達的故事】是整首歌的靈魂！必須深入故事中的真實掙扎、黑夜苦楚與處境，層層推進：
      - 【起（處境描寫）】：描寫黑夜、軟弱、風浪、疲乏等具體生活場景；
@@ -238,27 +241,79 @@ ${lineSpecs.map((s) => s.constraintText).join('\n')}
       };
     };
 
+    // 檢查全曲詞彙重複率（除核心代名詞外，實詞不可重複超過 3 次）
+    const findExcessiveRepetitions = (
+      groupTexts: string[][],
+      maxAllowed = 3
+    ): { word: string; count: number }[] => {
+      const wordCounts: Record<string, number> = {};
+      const stopWords = new Set([
+        '我們', '你們', '祢們', '祂們', '我的', '祢的', '你的', '祂的',
+        '的主', '之主', '的神', '之神', '同在', '在這', '在那', '不知',
+        '我要', '祢要', '只要', '不要', '可以', '能夠', '這生', '一生',
+      ]);
+
+      groupTexts.forEach((line) => {
+        line.forEach((group) => {
+          const gClean = group.replace(/[^\u4e00-\u9fa5]/g, '');
+          if (gClean.length >= 2) {
+            if (!stopWords.has(gClean)) {
+              wordCounts[gClean] = (wordCounts[gClean] || 0) + 1;
+            }
+            if (gClean.length === 4) {
+              const w1 = gClean.slice(0, 2);
+              const w2 = gClean.slice(2, 4);
+              if (!stopWords.has(w1)) wordCounts[w1] = (wordCounts[w1] || 0) + 1;
+              if (!stopWords.has(w2)) wordCounts[w2] = (wordCounts[w2] || 0) + 1;
+            }
+          }
+        });
+      });
+
+      const excessive: { word: string; count: number }[] = [];
+      for (const [word, count] of Object.entries(wordCounts)) {
+        if (count > maxAllowed) {
+          excessive.push({ word, count });
+        }
+      }
+      return excessive;
+    };
+
     const initialEval = evaluateAccuracy(currentGroupTexts);
     let currentEval = initialEval;
+    let excessiveReps = findExcessiveRepetitions(currentGroupTexts, 3);
     let repairCount = 0;
     const maxRetries = aiConfig.enableAutoRepair
       ? Math.min(Math.max(aiConfig.repairMaxRetries || 2, 1), 3)
       : 0;
 
-    // Stage 2: 本地粵拼審音 + 保留主題故事語意之 AI 自動修正迴圈
-    while (currentEval.errorDetails.length > 0 && repairCount < maxRetries) {
+    // Stage 2: 本地粵拼審音 + 詞彙多樣性（最多重複3次） + 保留主題語意之 AI 自動修正迴圈
+    while (
+      (currentEval.errorDetails.length > 0 || excessiveReps.length > 0) &&
+      repairCount < maxRetries
+    ) {
       repairCount++;
+      const repIssues =
+        excessiveReps.length > 0
+          ? `\n發現以下詞彙在全曲重複超過 3 次（過度重複）：\n${excessiveReps
+              .map((e) => `- 「${e.word}」共出現了 ${e.count} 次，請改用同義詞替換其中部分，保持豐富不單調！`)
+              .join('\n')}`
+          : '';
+
       const repairUserPrompt = `我們使用本地粵語字典（to-jyutping）檢驗了你為《${title}》（主題：${meaning}）生成的歌詞草稿：
 ${currentGroupTexts
   .map((gList, idx) => `第 ${idx + 1} 行 (${lineSpecs[idx].targetPattern})：${gList.join(' ')}`)
   .join('\n')}
-
-發現以下詞組存在「唔啱音（聲調不符）」：
-${currentEval.errorDetails.map((e) => `- ${e.problemDesc}`).join('\n')}
+${
+  currentEval.errorDetails.length > 0
+    ? `\n發現以下詞組存在「唔啱音（聲調不符）」：\n${currentEval.errorDetails.map((e) => `- ${e.problemDesc}`).join('\n')}`
+    : ''
+}${repIssues}
 
 【修正重要原則】：
 1. 修正後的字必須 100% 符合目標 0243 數字譜。
-2. **極重要：請務必保留原句對主題故事「${title} — ${meaning}」的表達！優先只修改唔啱音的那 1～2 個字，切勿把整句換成與主題無關的空泛詞語！**
+2. 同一詞彙在全曲絕不可重複超過 3 次（除我、祢、祂、主、神外）。
+3. **極重要：請務必保留原句對主題故事「${title} — ${meaning}」的表達！優先只修改唔啱音或重複的那 1～2 個字，切勿把整句換成與主題無關的空泛詞語！**
 請以相同的 JSON 格式回傳完整的 "lines" 陣列。`;
 
       try {
@@ -320,6 +375,8 @@ ${currentEval.errorDetails.map((e) => `- ${e.problemDesc}`).join('\n')}
       existingLines
     );
 
+    excessiveReps = findExcessiveRepetitions(currentGroupTexts, 3);
+
     return NextResponse.json({
       lines,
       stats: {
@@ -330,6 +387,7 @@ ${currentEval.errorDetails.map((e) => `- ${e.problemDesc}`).join('\n')}
         repairIterations: repairCount,
         totalChars: currentEval.totalChars,
         matchedChars: currentEval.matchedChars,
+        repeatedWordWarnings: excessiveReps.map((e) => `${e.word} (${e.count}次)`),
       },
     });
   } catch (err: unknown) {
