@@ -1039,6 +1039,7 @@ export default function CantoneseLyricStudioPage() {
       if (!res.ok || data.error) {
         throw new Error(data.error || 'AI 生成失敗');
       }
+      commitLinesUpdate(data.lines);
       let toastMsg = `AI 主題生成完成（協音準確率 ${data.stats?.finalAccuracy ?? 100}%）`;
       if (data.stats?.repeatedWordWarnings && data.stats.repeatedWordWarnings.length > 0) {
         toastMsg += `；提示：${data.stats.repeatedWordWarnings.join('、')} 出現超過 3 次`;
