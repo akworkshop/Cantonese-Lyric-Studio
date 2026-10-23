@@ -257,6 +257,67 @@ export default function CantoneseLyricStudioPage() {
     }, 2600);
   }, []);
 
+  // 跨裝置同步 Supabase 帳號中的 AI API Keys
+  const syncCloudApiKeys = useCallback(async (user: User) => {
+    const meta = user.user_metadata || {};
+    const cloudGemini = (meta.gemini_key as string) || '';
+    const cloudGroq = (meta.groq_key as string) || '';
+    const cloudProvider = (meta.preferred_provider as AIProviderType) || '';
+
+    const localGemini = localStorage.getItem('cls_gemini_key') || '';
+    const localGroq = localStorage.getItem('cls_groq_key') || '';
+    const localProvider = (localStorage.getItem('cls_provider') as AIProviderType) || 'gemini';
+
+    // 若雲端已有 Key，優先拉取雲端；若雲端沒有但本地有，則以本地為主
+    const finalGemini = cloudGemini || localGemini;
+    const finalGroq = cloudGroq || localGroq;
+    const finalProvider = cloudProvider || localProvider;
+
+    if (finalGemini) {
+      localStorage.setItem('cls_gemini_key', finalGemini);
+    }
+    if (finalGroq) {
+      localStorage.setItem('cls_groq_key', finalGroq);
+    }
+    if (finalProvider) {
+      localStorage.setItem('cls_provider', finalProvider);
+    }
+
+    setSavedKeys({ gemini: finalGemini, groq: finalGroq });
+    setAiConfig((prev) => {
+      const activeProvider = finalProvider || prev.provider;
+      const activeKey =
+        activeProvider === 'gemini'
+          ? finalGemini
+          : activeProvider === 'groq'
+          ? finalGroq
+          : '';
+      return {
+        ...prev,
+        provider: activeProvider,
+        apiKey: activeKey || prev.apiKey,
+      };
+    });
+
+    // 若本地有 Key 但雲端尚未備份，自動同步備份到 Supabase 帳號 metadata
+    if (
+      supabase &&
+      ((!cloudGemini && localGemini) ||
+        (!cloudGroq && localGroq) ||
+        (!cloudProvider && localProvider))
+    ) {
+      try {
+        await supabase.auth.updateUser({
+          data: {
+            gemini_key: finalGemini,
+            groq_key: finalGroq,
+            preferred_provider: finalProvider,
+          },
+        });
+      } catch {}
+    }
+  }, []);
+
   // 初始化載入預設詩歌、儲存的專案列表與 API Keys，並監聽 Supabase 登入狀態
   useEffect(() => {
     const initialLines = buildLyricLinesFromPatternsAndTexts(
@@ -295,6 +356,7 @@ export default function CantoneseLyricStudioPage() {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           setCurrentUser(session.user);
+          syncCloudApiKeys(session.user);
           fetchUserProfile(session.user).then(setUserProfile);
           setIsCloudLoading(true);
           fetchCloudProjects(session.user.id)
@@ -308,6 +370,7 @@ export default function CantoneseLyricStudioPage() {
       } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (session?.user) {
           setCurrentUser(session.user);
+          syncCloudApiKeys(session.user);
           const prof = await fetchUserProfile(session.user);
           setUserProfile(prof);
           setIsCloudLoading(true);
@@ -325,7 +388,7 @@ export default function CantoneseLyricStudioPage() {
         subscription.unsubscribe();
       };
     }
-  }, []);
+  }, [syncCloudApiKeys]);
 
   // 登入 / 註冊 提交處理
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -345,24 +408,28 @@ export default function CantoneseLyricStudioPage() {
 
     try {
       if (authMode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: authEmail.trim(),
           password: authPassword,
         });
         if (error) throw error;
+        if (data.user) {
+          await syncCloudApiKeys(data.user);
+        }
         setShowAuthModal(false);
         setAuthPassword('');
-        showToast('登入成功！已連線 Supabase 雲端跨裝置同步');
+        showToast('登入成功！已連線 Supabase 雲端跨裝置同步並載入 AI 設定');
       } else {
         const { data, error } = await supabase.auth.signUp({
           email: authEmail.trim(),
           password: authPassword,
         });
         if (error) throw error;
-        if (data.session) {
+        if (data.session && data.user) {
+          await syncCloudApiKeys(data.user);
           setShowAuthModal(false);
           setAuthPassword('');
-          showToast('註冊並登入成功！已連線 Supabase 雲端同步');
+          showToast('註冊並登入成功！已連線 Supabase 雲端同步並備份 AI 設定');
         } else {
           setAuthSuccessMsg('註冊成功！若有啟用信箱驗證，請至 Email 收信開通。');
         }
@@ -835,20 +902,32 @@ export default function CantoneseLyricStudioPage() {
     try {
       localStorage.setItem('cls_provider', provider);
     } catch {}
+
+    if (supabase && currentUser) {
+      supabase.auth.updateUser({ data: { preferred_provider: provider } }).catch(() => {});
+    }
   };
 
   const handleApiKeyChange = (val: string) => {
     setAiConfig((prev) => ({ ...prev, apiKey: val }));
-    if (aiConfig.provider === 'gemini') {
+    const provider = aiConfig.provider;
+
+    if (provider === 'gemini') {
       setSavedKeys((prev) => ({ ...prev, gemini: val }));
       try {
         localStorage.setItem('cls_gemini_key', val);
       } catch {}
-    } else if (aiConfig.provider === 'groq') {
+    } else if (provider === 'groq') {
       setSavedKeys((prev) => ({ ...prev, groq: val }));
       try {
         localStorage.setItem('cls_groq_key', val);
       } catch {}
+    }
+
+    // 若已登入，即時自動同步到 Supabase 帳號 metadata
+    if (supabase && currentUser) {
+      const field = provider === 'gemini' ? 'gemini_key' : 'groq_key';
+      supabase.auth.updateUser({ data: { [field]: val } }).catch(() => {});
     }
   };
 
@@ -2588,7 +2667,11 @@ export default function CantoneseLyricStudioPage() {
                       type={showApiKey ? 'text' : 'password'}
                       value={aiConfig.apiKey || ''}
                       onChange={(e) => handleApiKeyChange(e.target.value)}
-                      placeholder="輸入 API Key（自動儲存於瀏覽器）"
+                      placeholder={
+                        currentUser
+                          ? '輸入 API Key（已自動雲端同步至帳號）'
+                          : '輸入 API Key（自動儲存於瀏覽器）'
+                      }
                       className="w-full bg-zinc-50 border border-zinc-200 rounded-lg pl-3 pr-9 py-2 text-zinc-900 focus:outline-none focus:border-zinc-900"
                     />
                     <button
@@ -2602,6 +2685,15 @@ export default function CantoneseLyricStudioPage() {
                         <Eye className="w-4 h-4" />
                       )}
                     </button>
+                  </div>
+                  <div className="text-[11px] text-zinc-500 mt-1 flex items-center justify-between">
+                    {currentUser ? (
+                      <span className="text-emerald-600 font-medium flex items-center gap-1">
+                        <Cloud className="w-3.5 h-3.5" /> 已自動與您的 Supabase 帳號 ({currentUser.email}) 雲端同步
+                      </span>
+                    ) : (
+                      <span>💡 登入帳號後，API Key 將自動備份至雲端，換電腦或換瀏覽器自動載入</span>
+                    )}
                   </div>
                   {aiConfig.provider === 'gemini' && geminiStatus.message && (
                     <p
