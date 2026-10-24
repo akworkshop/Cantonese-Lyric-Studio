@@ -45,6 +45,7 @@ import {
 import {
   analyzeCharToken,
   buildLyricLinesFromPatternsAndTexts,
+  getCandidatesWithLockedConstraints,
   getVerifiedCandidatesForGroupPattern,
   normalizeTonePatternLine,
   verifyPhraseAgainstPattern,
@@ -661,7 +662,7 @@ export default function CantoneseLyricStudioPage() {
     e.target.value = '';
   };
 
-  // 刷新本地詞庫建議詞（支援隨機換一批，並優先排序契合歌曲主題故事的詞彙）
+  // 刷新本地詞庫建議詞（支援隨機換一批，並智能保留 🟢 locked 鎖定字元）
   const refreshLocalAlternatives = useCallback(
     (lineIdx: number, groupIdx: number, randomize = false) => {
       const line = lines[lineIdx];
@@ -671,25 +672,17 @@ export default function CantoneseLyricStudioPage() {
       const currentText = group.tokens.map((t) => t.char).join('');
       const targetPat = group.targetGroupPattern;
 
-      const matchesLocked = (word: string) => {
-        const chars = Array.from(word);
-        if (chars.length !== group.tokens.length) return false;
-        for (let i = 0; i < group.tokens.length; i++) {
-          if (group.tokens[i].status === 'locked' && group.tokens[i].char !== '＿') {
-            if (chars[i] !== group.tokens[i].char) return false;
-          }
-        }
-        return true;
-      };
-
-      const localVerified = getVerifiedCandidatesForGroupPattern(
-        targetPat,
-        36,
+      // 智能調用支援鎖定約束的詞庫檢索
+      const localVerified = getCandidatesWithLockedConstraints(
+        group.tokens,
+        28,
         randomize,
         `${title} ${meaning}`
       )
-        .filter((w) => w !== currentText && matchesLocked(w))
-        .slice(0, 8);
+        .filter((w) => w !== currentText)
+        .slice(0, 10);
+
+      const hasLocked = group.tokens.some((t) => t.status === 'locked' && t.char && t.char !== '＿');
 
       const instantCands: AlternativeCandidate[] = localVerified.map((word, i) => {
         const check = verifyPhraseAgainstPattern(word, targetPat);
@@ -700,7 +693,9 @@ export default function CantoneseLyricStudioPage() {
           actualPattern: check.actualPattern,
           isExactToneMatch: check.isExactMatch,
           jyutpingList: check.jyutpingList,
-          toneAnalysis: '📚 本地／CantonHymn 0243 協音詞庫（非 AI 生成）',
+          toneAnalysis: hasLocked
+            ? '📚 保留鎖定字・智能推薦未鎖定部分'
+            : '📚 本地／CantonHymn 0243 協音詞庫',
           vocalErgonomics: check.endErgonomics.note,
           ergonomicsRating: check.endErgonomics.rating,
         };
@@ -1104,6 +1099,9 @@ export default function CantoneseLyricStudioPage() {
       };
     });
     commitLinesUpdate(nextLines);
+    setTimeout(() => {
+      refreshLocalAlternatives(lineIdx, groupIdx, false);
+    }, 10);
   };
 
   // 儲存手動改字
@@ -1230,7 +1228,7 @@ export default function CantoneseLyricStudioPage() {
     }
   };
 
-  // 一鍵套用候選詞
+  // 一鍵套用候選詞（支援整組、部分鎖定補位與單字替換）
   const handleApplyCandidate = (
     lineIdx: number,
     groupIdx: number,
@@ -1244,17 +1242,74 @@ export default function CantoneseLyricStudioPage() {
         ...line,
         groups: line.groups.map((group, gIdx) => {
           if (gIdx !== groupIdx) return group;
+
+          // 情況 1：單字模式 (applyScope === 'token') 且候選字是 1 個字
+          if (applyScope === 'token' && selectedRef?.tokenIdx !== undefined && chars.length === 1) {
+            return {
+              ...group,
+              tokens: group.tokens.map((tok, tIdx) => {
+                if (tIdx !== selectedRef.tokenIdx) return tok;
+                const analyzed = analyzeCharToken(
+                  chars[0],
+                  tok.expectedTone,
+                  tIdx === group.tokens.length - 1,
+                  tok.id
+                );
+                if (autoLock && analyzed.actualTone === analyzed.expectedTone) {
+                  analyzed.status = 'locked';
+                }
+                return analyzed;
+              }),
+            };
+          }
+
+          // 情況 2：候選詞長度剛好等於「未鎖定」的字數（例如 02 鎖定，點選了候選詞 34「得勝」）
+          const unlockedIndices = group.tokens
+            .map((t, idx) => (t.status !== 'locked' ? idx : -1))
+            .filter((idx) => idx !== -1);
+
+          if (chars.length === unlockedIndices.length && unlockedIndices.length < group.tokens.length) {
+            const newChars = group.tokens.map((t) => t.char);
+            unlockedIndices.forEach((uIdx, i) => {
+              newChars[uIdx] = chars[i];
+            });
+            return {
+              ...group,
+              tokens: group.tokens.map((tok, tIdx) => {
+                const wasLocked = tok.status === 'locked';
+                const analyzed = analyzeCharToken(
+                  newChars[tIdx],
+                  tok.expectedTone,
+                  tIdx === group.tokens.length - 1,
+                  tok.id,
+                  wasLocked ? 'locked' : undefined
+                );
+                if (wasLocked) {
+                  analyzed.status = 'locked';
+                } else if (autoLock && analyzed.actualTone === analyzed.expectedTone) {
+                  analyzed.status = 'locked';
+                }
+                return analyzed;
+              }),
+            };
+          }
+
+          // 情況 3：整組替換（嚴格保留原本已鎖定位置的鎖定狀態）
           return {
             ...group,
             tokens: group.tokens.map((tok, tIdx) => {
               const newChar = chars[tIdx] || tok.char;
+              const wasLocked = tok.status === 'locked';
               const analyzed = analyzeCharToken(
                 newChar,
                 tok.expectedTone,
                 tIdx === group.tokens.length - 1,
-                tok.id
+                tok.id,
+                wasLocked ? 'locked' : undefined
               );
-              if (autoLock && analyzed.actualTone === analyzed.expectedTone) {
+              if (wasLocked) {
+                analyzed.status = 'locked';
+              } else if (autoLock && analyzed.actualTone === analyzed.expectedTone) {
                 analyzed.status = 'locked';
               }
               return analyzed;
@@ -1265,6 +1320,9 @@ export default function CantoneseLyricStudioPage() {
     });
 
     commitLinesUpdate(nextLines);
+    setTimeout(() => {
+      refreshLocalAlternatives(lineIdx, groupIdx, false);
+    }, 10);
     showToast(`已替換為「${candidateText}」`);
   };
 
@@ -2012,9 +2070,28 @@ export default function CantoneseLyricStudioPage() {
                         {/* 📚 本地／CantonHymn 協音詞庫專區 + 操作按鈕 */}
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-medium text-zinc-500">
-                              📚 本地／CantonHymn 詞庫 [{activeGroup.targetGroupPattern}]（非 AI）：
-                            </span>
+                            {activeGroup.tokens.some(
+                              (t) => t.status === 'locked' && t.char && t.char !== '＿'
+                            ) ? (
+                              <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1.5">
+                                <Lock className="w-3 h-3 text-emerald-600" />
+                                <span>
+                                  已保留鎖定字「
+                                  {activeGroup.tokens
+                                    .map((t) =>
+                                      t.status === 'locked' && t.char && t.char !== '＿'
+                                        ? t.char
+                                        : '＿'
+                                    )
+                                    .join('')}
+                                  」，智能推薦未鎖定音階：
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-xs font-medium text-zinc-500">
+                                📚 本地／CantonHymn 詞庫 [{activeGroup.targetGroupPattern}]（非 AI）：
+                              </span>
+                            )}
                             {alternatives.length === 0 ? (
                               <span className="text-xs text-zinc-400">
                                 請點擊右側「詞庫換一批」或「AI 換一批」

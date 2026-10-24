@@ -1187,6 +1187,176 @@ export function getVerifiedCandidatesForGroupPattern(
 }
 
 /**
+ * 針對含有部分鎖定字元 (🟢 locked) 的詞組區塊，
+ * 自動為未鎖定的部分檢索或自然拼接出 100% 啱音且保留鎖定字元的完整候選詞組！
+ * 例如：目標 [0234]，前兩字 [02] 鎖定為「神在」，未鎖定部分 [34] 會自動調用「誇勝/得勝/宣告/看顧」
+ * 生成「神在誇勝」、「神在得勝」、「神在宣告」、「神在看顧」供用戶直接選擇！
+ */
+export function getCandidatesWithLockedConstraints(
+  tokens: { expectedTone: string; status?: TokenStatus; char?: string }[],
+  limit = 16,
+  randomize = false,
+  themeText = ''
+): string[] {
+  const fullPat = tokens.map((t) => t.expectedTone).join('');
+  if (!fullPat) return [];
+
+  const lockedIndices = tokens
+    .map((t, idx) => (t.status === 'locked' && t.char && t.char !== '＿' ? idx : -1))
+    .filter((idx) => idx !== -1);
+
+  // 1. 若無任何字元鎖定，直接使用標準候選生成
+  if (lockedIndices.length === 0) {
+    return getVerifiedCandidatesForGroupPattern(fullPat, limit, randomize, themeText);
+  }
+
+  // 2. 若全部字元皆鎖定，直接回傳鎖定字本身
+  if (lockedIndices.length === tokens.length) {
+    return [tokens.map((t) => t.char || '').join('')];
+  }
+
+  const matchesLocked = (word: string) => {
+    const chars = Array.from(word);
+    if (chars.length !== tokens.length) return false;
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].status === 'locked' && tokens[i].char && tokens[i].char !== '＿') {
+        if (chars[i] !== tokens[i].char) return false;
+      }
+    }
+    return true;
+  };
+
+  const results: string[] = [];
+  const seen = new Set<string>();
+
+  // A. 先嘗試全詞匹配（最自然的原生詞或成語）
+  const fullCands = getVerifiedCandidatesForGroupPattern(fullPat, 100, randomize, themeText);
+  for (const w of fullCands) {
+    if (matchesLocked(w) && !seen.has(w)) {
+      seen.add(w);
+      results.push(w);
+      if (results.length >= limit) return results;
+    }
+  }
+
+  // B. 連續未鎖定區塊精準拼接填補
+  const firstUnlocked = tokens.findIndex((t) => t.status !== 'locked');
+  const lastUnlocked = tokens.map((t) => t.status !== 'locked').lastIndexOf(true);
+
+  // 情況 1：前綴鎖定，後綴未鎖定（例如 02 鎖定，後綴 34 待填）
+  if (firstUnlocked > 0 && lastUnlocked === tokens.length - 1) {
+    const lockedPrefix = tokens.slice(0, firstUnlocked).map((t) => t.char || '').join('');
+    const suffixPat = tokens.slice(firstUnlocked).map((t) => t.expectedTone).join('');
+    const suffixCands = getVerifiedCandidatesForGroupPattern(suffixPat, 40, randomize, themeText);
+
+    for (const sc of suffixCands) {
+      if (!isNaturalCombinedPhrase(lockedPrefix, sc)) continue;
+      const combined = `${lockedPrefix}${sc}`;
+      if (!seen.has(combined) && matchesLocked(combined)) {
+        const check = verifyPhraseAgainstPattern(combined, fullPat);
+        if (check.isExactMatch && check.endErgonomics.rating !== 'warning_stopped') {
+          seen.add(combined);
+          results.push(combined);
+          if (results.length >= limit) return results;
+        }
+      }
+    }
+  }
+
+  // 情況 2：後綴鎖定，前綴未鎖定（例如前綴 02 待填，後綴 34 鎖定）
+  if (firstUnlocked === 0 && lastUnlocked < tokens.length - 1) {
+    const prefixPat = tokens.slice(0, lastUnlocked + 1).map((t) => t.expectedTone).join('');
+    const lockedSuffix = tokens.slice(lastUnlocked + 1).map((t) => t.char || '').join('');
+    const prefixCands = getVerifiedCandidatesForGroupPattern(prefixPat, 40, randomize, themeText);
+
+    for (const pc of prefixCands) {
+      if (!isNaturalCombinedPhrase(pc, lockedSuffix)) continue;
+      const combined = `${pc}${lockedSuffix}`;
+      if (!seen.has(combined) && matchesLocked(combined)) {
+        const check = verifyPhraseAgainstPattern(combined, fullPat);
+        if (check.isExactMatch && check.endErgonomics.rating !== 'warning_stopped') {
+          seen.add(combined);
+          results.push(combined);
+          if (results.length >= limit) return results;
+        }
+      }
+    }
+  }
+
+  // 情況 3：中間未鎖定，前後皆鎖定（例如 0 鎖定，23 待填，4 鎖定）
+  if (firstUnlocked > 0 && lastUnlocked < tokens.length - 1) {
+    const lockedPrefix = tokens.slice(0, firstUnlocked).map((t) => t.char || '').join('');
+    const middlePat = tokens.slice(firstUnlocked, lastUnlocked + 1).map((t) => t.expectedTone).join('');
+    const lockedSuffix = tokens.slice(lastUnlocked + 1).map((t) => t.char || '').join('');
+    const middleCands = getVerifiedCandidatesForGroupPattern(middlePat, 40, randomize, themeText);
+
+    for (const mc of middleCands) {
+      const combined = `${lockedPrefix}${mc}${lockedSuffix}`;
+      if (!seen.has(combined) && matchesLocked(combined)) {
+        const check = verifyPhraseAgainstPattern(combined, fullPat);
+        if (check.isExactMatch && check.endErgonomics.rating !== 'warning_stopped') {
+          seen.add(combined);
+          results.push(combined);
+          if (results.length >= limit) return results;
+        }
+      }
+    }
+  }
+
+  // C. 兜底逐字填補（任意零散鎖定字，從單字庫精選音階吻合之常用字）
+  if (results.length < limit) {
+    const unlockedPositions = tokens
+      .map((t, idx) => (t.status !== 'locked' ? { idx, tone: t.expectedTone } : null))
+      .filter(Boolean) as { idx: number; tone: string }[];
+
+    if (unlockedPositions.length > 0 && unlockedPositions.length <= 2) {
+      const candLists = unlockedPositions.map((pos) => {
+        const raw = VERIFIED_CANTONESE_WORSHIP_CHARS[pos.tone] || [];
+        return raw.map((c) => c.replace(/\(.*\)/, '')).filter(Boolean).slice(0, 20);
+      });
+
+      if (unlockedPositions.length === 1) {
+        const pos = unlockedPositions[0];
+        for (const ch of candLists[0]) {
+          const chars = tokens.map((t) => t.char || '＿');
+          chars[pos.idx] = ch;
+          const combined = chars.join('');
+          if (!seen.has(combined) && matchesLocked(combined)) {
+            const check = verifyPhraseAgainstPattern(combined, fullPat);
+            if (check.isExactMatch && check.endErgonomics.rating !== 'warning_stopped') {
+              seen.add(combined);
+              results.push(combined);
+              if (results.length >= limit) return results;
+            }
+          }
+        }
+      } else if (unlockedPositions.length === 2) {
+        const pos1 = unlockedPositions[0];
+        const pos2 = unlockedPositions[1];
+        for (const ch1 of candLists[0].slice(0, 10)) {
+          for (const ch2 of candLists[1].slice(0, 10)) {
+            const chars = tokens.map((t) => t.char || '＿');
+            chars[pos1.idx] = ch1;
+            chars[pos2.idx] = ch2;
+            const combined = chars.join('');
+            if (!seen.has(combined) && matchesLocked(combined)) {
+              const check = verifyPhraseAgainstPattern(combined, fullPat);
+              if (check.isExactMatch && check.endErgonomics.rating !== 'warning_stopped') {
+                seen.add(combined);
+                results.push(combined);
+                if (results.length >= limit) return results;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
  * 從用戶輸入的「歌曲名稱」與「主題故事」中，自動提取核心詞彙並附上 100% 準確的 0243 聲調標記，
  * 讓 AI 填詞時能直接把用戶故事中的關鍵字（如：掌權[30]、困境[43]、患難[22]、驚惶[30]）精準嵌進對應旋律！
  */

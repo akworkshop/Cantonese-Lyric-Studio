@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   buildDynamicLexiconPrompt,
+  getCandidatesWithLockedConstraints,
   getVerifiedCandidatesForGroupPattern,
   VERIFIED_CANTONESE_WORSHIP_CHARS,
   verifyPhraseAgainstPattern,
@@ -80,12 +81,12 @@ export async function POST(req: NextRequest) {
 
     const themeContext = `${title} ${meaning} ${userInstruction}`.trim();
     const lexiconHint = buildDynamicLexiconPrompt([cleanTargetPattern], title, meaning);
-    const verifiedExamples = getVerifiedCandidatesForGroupPattern(
-      cleanTargetPattern,
+    const verifiedExamples = getCandidatesWithLockedConstraints(
+      groupTokens,
       15,
       false,
       themeContext
-    ).filter((p) => p !== currentGroupText && matchesLockedConstraint(p));
+    ).filter((p) => p !== currentGroupText);
 
     const systemPrompt = `你是一位精通「0243 粵語協音對位法」與現代粵語敬拜詩歌（如玻璃海、同心圓、ACM、CantonHymn 風格）的填詞顧問。
 用戶目前正在修訂歌曲《${title}》（主題故事：${meaning}）中，歌詞行「${lineText}」的一個詞組區塊（目前為「${currentGroupText}」）。請針對該區塊提供 **6 個** 符合目標 0243 數字譜、**緊扣歌曲主題故事「${meaning}」**、且放進整句「${lineText}」後**意思連貫、直白易明、自然流暢且絕不夾硬**的候選替換詞組。
