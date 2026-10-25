@@ -2688,6 +2688,27 @@ export default function CantoneseLyricStudioPage() {
                 </svg>
                 <span>以 Google 帳號一鍵登入</span>
               </button>
+
+              <p className="text-[10px] text-center text-zinc-400">
+                登入即表示您同意本工作台的{' '}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-zinc-600 underline hover:text-zinc-900"
+                >
+                  服務條款
+                </a>{' '}
+                與{' '}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-zinc-600 underline hover:text-zinc-900"
+                >
+                  隱私權政策
+                </a>
+              </p>
             </div>
           </div>
         </div>
