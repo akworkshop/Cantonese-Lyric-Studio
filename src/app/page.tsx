@@ -33,6 +33,8 @@ import {
   LogOut,
   Cloud,
   Crown,
+  BookMarked,
+  Sliders,
 } from 'lucide-react';
 import {
   AIProviderConfig,
@@ -88,6 +90,63 @@ interface SavedProject {
   lines: LyricLine[];
   updatedAt: string;
 }
+
+interface ScriptureStyleOption {
+  id: 'contemporary' | 'devotional' | 'declaration' | 'cross' | 'lament' | 'liturgical';
+  name: string;
+  desc: string;
+  badge: string;
+}
+
+const SCRIPTURE_STYLE_OPTIONS: ScriptureStyleOption[] = [
+  {
+    id: 'contemporary',
+    name: '現代細膩感人',
+    desc: '玻璃海、同心圓風格：深情真摯、富有生活觸動與畫面感',
+    badge: '現代推薦',
+  },
+  {
+    id: 'devotional',
+    name: '親密靈修默想',
+    desc: '詩篇默想、心靈傾訴、如鹿切慕溪水、安靜在主懷',
+    badge: '親密靈修',
+  },
+  {
+    id: 'declaration',
+    name: '宣告得勝掌權',
+    desc: '讚美之泉、歡呼誇勝、宣告神作王、寶座榮耀威嚴',
+    badge: '得勝誇勝',
+  },
+  {
+    id: 'cross',
+    name: '十架救贖奉獻',
+    desc: '釘痕大愛、寶血買贖、感恩捨身、立志作活祭跟隨',
+    badge: '十架恩典',
+  },
+  {
+    id: 'lament',
+    name: '逆境哀歌安慰',
+    desc: '患難風浪不驚、暗夜微聲同行、擦乾眼淚、撫平傷痛',
+    badge: '安慰同行',
+  },
+  {
+    id: 'liturgical',
+    name: '傳統古典聖詩',
+    desc: '崇拜禮儀、嚴謹四部和聲、莊嚴頌讚三一上帝',
+    badge: '崇拜禮儀',
+  },
+];
+
+const THEOLOGICAL_THEME_OPTIONS = [
+  { id: 'victory', label: '👑 宣告神掌權與作王', keyword: '宣告神掌權與作王' },
+  { id: 'comfort', label: '🛡️ 患難逆境與安慰不驚', keyword: '患難逆境與安慰陪伴' },
+  { id: 'cross', label: '✝️ 十架救贖與感恩獻上', keyword: '十架救贖與感恩獻上' },
+  { id: 'devotional', label: '🦌 親近渴慕與深情傾訴', keyword: '親近渴慕與深情傾訴' },
+  { id: 'spirit', label: '🕊️ 聖靈降臨與復興恩膏', keyword: '聖靈降臨與復興恩膏' },
+  { id: 'rock', label: '⛰️ 堅固磐石與高台避難', keyword: '堅固磐石與避難高台' },
+  { id: 'metaphor', label: '🏺 聖經比喻（如泥/麥子/錨）', keyword: '聖經經典比喻與神聖象徵' },
+  { id: 'transition', label: '🔗 轉折承接（為了這愛/因祢）', keyword: '轉折承接與因果敘事' },
+];
 
 const PRESET_SONGS: PresetSong[] = [
   {
@@ -176,6 +235,16 @@ export default function CantoneseLyricStudioPage() {
   });
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [settingsTab, setSettingsTab] = useState<'ai' | 'scripture'>('ai');
+  const [scriptureTone, setScriptureTone] = useState<{
+    style: 'contemporary' | 'devotional' | 'declaration' | 'cross' | 'lament' | 'liturgical';
+    themes: string[];
+    scriptureFocus: string;
+  }>({
+    style: 'contemporary',
+    themes: ['親近渴慕與深情傾訴', '十架救贖與感恩獻上'],
+    scriptureFocus: '',
+  });
   const [showToneGuideModal, setShowToneGuideModal] = useState<boolean>(false);
   const [lexiconSearchPattern, setLexiconSearchPattern] = useState<string>('3344');
   const [ollamaStatus, setOllamaStatus] = useState<{
@@ -363,6 +432,14 @@ export default function CantoneseLyricStudioPage() {
         const parsed = JSON.parse(rawProjects) as SavedProject[];
         if (Array.isArray(parsed) && parsed.length > 0) {
           setSavedProjects(parsed);
+        }
+      }
+
+      const savedTone = localStorage.getItem('cls_scripture_tone');
+      if (savedTone) {
+        const parsedTone = JSON.parse(savedTone);
+        if (parsedTone && parsedTone.style) {
+          setScriptureTone(parsedTone);
         }
       }
     } catch {}
@@ -553,6 +630,39 @@ export default function CantoneseLyricStudioPage() {
       return () => clearTimeout(t);
     }
   }, [showAuthModal, isGsiReady]);
+
+  // 更新並持久化研經口味偏好
+  const handleUpdateScriptureTone = useCallback(
+    (updater: (prev: typeof scriptureTone) => typeof scriptureTone) => {
+      setScriptureTone((prev) => {
+        const next = updater(prev);
+        try {
+          localStorage.setItem('cls_scripture_tone', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    },
+    []
+  );
+
+  // 結合用戶主題與當前設定的「研經口味風格」
+  const getCombinedTheologicalContext = useCallback(
+    (baseMeaning: string) => {
+      const styleObj = SCRIPTURE_STYLE_OPTIONS.find((s) => s.id === scriptureTone.style);
+      const parts = [baseMeaning.trim()];
+      if (styleObj) {
+        parts.push(`【研經口味風格】: ${styleObj.name}（${styleObj.desc}）`);
+      }
+      if (scriptureTone.themes && scriptureTone.themes.length > 0) {
+        parts.push(`【核心主題】: ${scriptureTone.themes.join('、')}`);
+      }
+      if (scriptureTone.scriptureFocus.trim()) {
+        parts.push(`【經文焦點/聖經背景】: ${scriptureTone.scriptureFocus.trim()}`);
+      }
+      return parts.filter(Boolean).join('\n');
+    },
+    [scriptureTone]
+  );
 
   // 儲存專案至 LocalStorage
   const persistProjectsToStorage = useCallback((projList: SavedProject[]) => {
@@ -1062,7 +1172,7 @@ export default function CantoneseLyricStudioPage() {
           gPat,
           36,
           true,
-          `${title} ${meaning}`
+          getCombinedTheologicalContext(`${title} ${meaning}`)
         );
         const prevInLine = lineChosen[lineChosen.length - 1] || '';
 
@@ -1114,7 +1224,7 @@ export default function CantoneseLyricStudioPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          meaning,
+          meaning: getCombinedTheologicalContext(meaning),
           patternText,
           existingLines: lines,
           aiConfig,
@@ -1271,7 +1381,7 @@ export default function CantoneseLyricStudioPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          meaning,
+          meaning: getCombinedTheologicalContext(meaning),
           fullLyricsContext,
           linePattern: line.targetPattern,
           lineText,
@@ -1540,12 +1650,20 @@ export default function CantoneseLyricStudioPage() {
           </button>
 
           <button
-            onClick={() => setShowSettingsModal(true)}
+            onClick={() => {
+              setSettingsTab('ai');
+              setShowSettingsModal(true);
+            }}
             className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 text-zinc-800 transition flex items-center gap-1.5 shrink-0"
+            title="設定 AI 模型與研經創作口味"
           >
             <Settings className="w-3.5 h-3.5 text-zinc-600" />
-            <span className="hidden sm:inline">模型：</span>
+            <span className="hidden sm:inline">設定:</span>
             <span>{aiConfig.provider.toUpperCase()}</span>
+            <span className="hidden md:inline text-zinc-300">|</span>
+            <span className="hidden md:inline text-[11px] text-indigo-700 font-medium">
+              {SCRIPTURE_STYLE_OPTIONS.find((s) => s.id === scriptureTone.style)?.name.slice(0, 4)}
+            </span>
           </button>
 
           <div className="h-4 w-px bg-zinc-200 mx-0.5 hidden sm:block" />
@@ -1669,26 +1787,40 @@ export default function CantoneseLyricStudioPage() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-            {/* 範例快速選擇 */}
+            {/* 示範範本（下拉選單超節省空間，附研經口味捷徑） */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                示範範本
-              </label>
-              <div className="flex flex-col gap-1">
-                {PRESET_SONGS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => handleLoadPreset(preset)}
-                    className={`text-left px-3 py-2 rounded-lg text-xs transition ${
-                      title === preset.title
-                        ? 'bg-zinc-900 text-white font-medium'
-                        : 'text-zinc-600 hover:bg-zinc-100'
-                    }`}
-                  >
-                    {preset.name}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  示範範本
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsTab('scripture');
+                    setShowSettingsModal(true);
+                  }}
+                  className="text-[11px] text-zinc-600 hover:text-zinc-900 flex items-center gap-1 underline transition"
+                  title="點擊切換研經口味與神學風格"
+                >
+                  <BookMarked className="w-3 h-3 text-indigo-600" />
+                  <span>口味: {SCRIPTURE_STYLE_OPTIONS.find((s) => s.id === scriptureTone.style)?.name.slice(0, 4)}</span>
+                </button>
               </div>
+              <select
+                value={PRESET_SONGS.find((p) => p.title === title)?.id || ''}
+                onChange={(e) => {
+                  const found = PRESET_SONGS.find((p) => p.id === e.target.value);
+                  if (found) handleLoadPreset(found);
+                }}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-800 focus:bg-white focus:outline-none focus:border-zinc-900 transition"
+              >
+                <option value="" disabled>點擊選擇範本載入...</option>
+                {PRESET_SONGS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="h-px bg-zinc-100" />
@@ -2848,7 +2980,7 @@ export default function CantoneseLyricStudioPage() {
         </div>
       )}
 
-      {/* ⚙️ AI 模型設定 Modal */}
+      {/* ⚙️ 工作台設定 Modal (雙 Tab：AI 引擎與系統 / 研經口味與創作風格) */}
       {showSettingsModal && (
         <div
           onClick={() => setShowSettingsModal(false)}
@@ -2856,223 +2988,375 @@ export default function CantoneseLyricStudioPage() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white border border-zinc-200 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-xl"
+            className="bg-white border border-zinc-200 rounded-2xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto"
           >
+            {/* Modal 頂部標題 */}
             <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <h3 className="font-semibold text-base text-zinc-900">
-                AI 模型設定 (Gemini / Groq / Ollama)
-              </h3>
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-zinc-700" />
+                <h3 className="font-semibold text-base text-zinc-900">
+                  工作台設定
+                </h3>
+              </div>
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="text-zinc-400 hover:text-zinc-700"
+                className="text-zinc-400 hover:text-zinc-700 p-1 rounded-lg transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div className="space-y-1.5">
-                <label className="font-medium text-zinc-700">選擇模型供應商</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      { id: 'gemini', label: 'Gemini API' },
-                      { id: 'groq', label: 'Groq (GPT-OSS)' },
-                      { id: 'ollama', label: '本地 Ollama' },
-                    ] as const
-                  ).map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => handleProviderChange(item.id)}
-                      className={`py-2 px-3 rounded-lg font-medium border transition ${
-                        aiConfig.provider === item.id
-                          ? 'bg-zinc-900 text-white border-zinc-900'
-                          : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-medium text-zinc-700">選擇或輸入模型名稱</label>
-                <select
-                  value={aiConfig.model}
-                  onChange={(e) =>
-                    setAiConfig((prev) => ({ ...prev, model: e.target.value }))
-                  }
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-900 focus:outline-none focus:border-zinc-900"
-                >
-                  {(aiConfig.provider === 'ollama' && ollamaStatus.models.length > 0
-                    ? ollamaStatus.models
-                    : aiConfig.provider === 'gemini' && geminiStatus.models.length > 0
-                    ? geminiStatus.models
-                    : aiConfig.provider === 'groq' && groqStatus.models.length > 0
-                    ? groqStatus.models
-                    : DEFAULT_MODELS[aiConfig.provider]
-                  ).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.badge}) — [{m.id}]
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={aiConfig.model}
-                  onChange={(e) =>
-                    setAiConfig((prev) => ({ ...prev, model: e.target.value }))
-                  }
-                  placeholder="亦可直接輸入模型 ID（例如 gemini-2.5-flash 或 llama-3.3-70b-versatile）"
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-800 focus:outline-none focus:border-zinc-900 mt-1.5"
-                />
-              </div>
-
-              {aiConfig.provider !== 'ollama' ? (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="font-medium text-zinc-700">
-                      {aiConfig.provider === 'gemini' ? 'Gemini' : 'Groq'} API Key
-                    </label>
-                    {aiConfig.provider === 'gemini' && (
-                      <button
-                        type="button"
-                        onClick={() => checkGeminiModels(aiConfig.apiKey || '')}
-                        className="text-[11px] text-zinc-600 hover:text-zinc-900 underline font-medium"
-                      >
-                        {geminiStatus.checking
-                          ? '正在讀取 Gemini 可用模型...'
-                          : '🔍 偵測帳號可用 Gemini 模型版本'}
-                      </button>
-                    )}
-                    {aiConfig.provider === 'groq' && (
-                      <button
-                        type="button"
-                        onClick={() => checkGroqModels(aiConfig.apiKey || '')}
-                        className="text-[11px] text-zinc-600 hover:text-zinc-900 underline font-medium"
-                      >
-                        {groqStatus.checking
-                          ? '正在讀取帳號可用模型...'
-                          : '🔍 偵測帳號可用模型 (GPT-OSS)'}
-                      </button>
-                    )}
-                  </div>
-                  <div className="relative flex items-center">
-                    <input
-                      type={showApiKey ? 'text' : 'password'}
-                      value={aiConfig.apiKey || ''}
-                      onChange={(e) => handleApiKeyChange(e.target.value)}
-                      placeholder={
-                        currentUser
-                          ? '輸入 API Key（已自動雲端同步至帳號）'
-                          : '輸入 API Key（自動儲存於瀏覽器）'
-                      }
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-lg pl-3 pr-9 py-2 text-zinc-900 focus:outline-none focus:border-zinc-900"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey((p) => !p)}
-                      className="absolute right-2.5 text-zinc-400 hover:text-zinc-700"
-                    >
-                      {showApiKey ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                  <div className="text-[11px] text-zinc-500 mt-1 flex items-center justify-between">
-                    {currentUser ? (
-                      <span className="text-emerald-600 font-medium flex items-center gap-1">
-                        <Cloud className="w-3.5 h-3.5" /> 已自動與您的 Supabase 帳號 ({currentUser.email}) 雲端同步
-                      </span>
-                    ) : (
-                      <span>💡 登入帳號後，API Key 將自動備份至雲端，換電腦或換瀏覽器自動載入</span>
-                    )}
-                  </div>
-                  {aiConfig.provider === 'gemini' && geminiStatus.message && (
-                    <p
-                      className={`text-[11px] ${
-                        geminiStatus.connected ? 'text-emerald-600' : 'text-amber-600'
-                      }`}
-                    >
-                      {geminiStatus.message}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <label className="font-medium text-zinc-700">
-                    本地 Ollama 伺服器網址
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={aiConfig.ollamaBaseUrl || 'http://localhost:11434'}
-                      onChange={(e) =>
-                        setAiConfig((prev) => ({
-                          ...prev,
-                          ollamaBaseUrl: e.target.value,
-                        }))
-                      }
-                      className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-900"
-                    />
-                    <button
-                      onClick={() =>
-                        checkOllamaConnection(
-                          aiConfig.ollamaBaseUrl || 'http://localhost:11434'
-                        )
-                      }
-                      className="px-3 py-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-medium"
-                    >
-                      {ollamaStatus.checking ? '檢測中...' : '重新偵測'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <label className="flex items-center gap-2 pt-2 cursor-pointer text-zinc-700">
-                <input
-                  type="checkbox"
-                  checked={aiConfig.enableAutoRepair}
-                  onChange={(e) =>
-                    setAiConfig((prev) => ({
-                      ...prev,
-                      enableAutoRepair: e.target.checked,
-                    }))
-                  }
-                  className="rounded border-zinc-300 text-zinc-900"
-                />
-                <span>啟用「本地粵拼字典驗證 + AI 連貫句子修正迴圈」（推薦開啟）</span>
-              </label>
-
-              <div className="pt-3 border-t border-zinc-100 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-medium text-zinc-700">Google Client ID (One Tap 原生秒登)</label>
-                  <span className="text-[10px] text-zinc-400">選填</span>
-                </div>
-                <input
-                  type="text"
-                  value={googleClientId}
-                  onChange={(e) => {
-                    const val = e.target.value.trim();
-                    setGoogleClientId(val);
-                    saveGoogleClientId(val);
-                  }}
-                  placeholder="例如: xxxxxx.apps.googleusercontent.com"
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-900 focus:outline-none focus:border-zinc-900 font-mono"
-                />
-                <p className="text-[10px] text-zinc-400 leading-relaxed">
-                  填入在 Google Cloud Console 申請的 Web Client ID 後，將自動啟用 One Tap 浮動提示與免跳轉原生驗證。亦可於 Netlify 環境變數設置 <code className="bg-zinc-100 px-1 py-0.5 rounded">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code>。
-                </p>
-              </div>
+            {/* 雙 Tab 切換列 */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-100/90 rounded-xl text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setSettingsTab('ai')}
+                className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition ${
+                  settingsTab === 'ai'
+                    ? 'bg-white text-zinc-900 shadow-xs font-semibold'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>AI 引擎與系統</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettingsTab('scripture')}
+                className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition ${
+                  settingsTab === 'scripture'
+                    ? 'bg-white text-indigo-950 shadow-xs font-semibold'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <BookMarked className="w-3.5 h-3.5 text-indigo-600" />
+                <span>研經口味與風格</span>
+              </button>
             </div>
 
-            <div className="flex justify-end pt-2">
+            {/* TAB 1: AI 引擎與系統 */}
+            {settingsTab === 'ai' && (
+              <div className="space-y-4 text-xs pt-1">
+                <div className="space-y-1.5">
+                  <label className="font-medium text-zinc-700">選擇模型供應商</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        { id: 'gemini', label: 'Gemini API' },
+                        { id: 'groq', label: 'Groq (GPT-OSS)' },
+                        { id: 'ollama', label: '本地 Ollama' },
+                      ] as const
+                    ).map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleProviderChange(item.id)}
+                        className={`py-2 px-3 rounded-lg font-medium border transition ${
+                          aiConfig.provider === item.id
+                            ? 'bg-zinc-900 text-white border-zinc-900'
+                            : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-medium text-zinc-700">選擇或輸入模型名稱</label>
+                  <select
+                    value={aiConfig.model}
+                    onChange={(e) =>
+                      setAiConfig((prev) => ({ ...prev, model: e.target.value }))
+                    }
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-900 focus:outline-none focus:border-zinc-900"
+                  >
+                    {(aiConfig.provider === 'ollama' && ollamaStatus.models.length > 0
+                      ? ollamaStatus.models
+                      : aiConfig.provider === 'gemini' && geminiStatus.models.length > 0
+                      ? geminiStatus.models
+                      : aiConfig.provider === 'groq' && groqStatus.models.length > 0
+                      ? groqStatus.models
+                      : DEFAULT_MODELS[aiConfig.provider]
+                    ).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.badge}) — [{m.id}]
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={aiConfig.model}
+                    onChange={(e) =>
+                      setAiConfig((prev) => ({ ...prev, model: e.target.value }))
+                    }
+                    placeholder="亦可直接輸入模型 ID（例如 gemini-2.5-flash 或 llama-3.3-70b-versatile）"
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-800 focus:outline-none focus:border-zinc-900 mt-1.5"
+                  />
+                </div>
+
+                {aiConfig.provider !== 'ollama' ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="font-medium text-zinc-700">
+                        {aiConfig.provider === 'gemini' ? 'Gemini' : 'Groq'} API Key
+                      </label>
+                      {aiConfig.provider === 'gemini' && (
+                        <button
+                          type="button"
+                          onClick={() => checkGeminiModels(aiConfig.apiKey || '')}
+                          className="text-[11px] text-zinc-600 hover:text-zinc-900 underline font-medium"
+                        >
+                          {geminiStatus.checking
+                            ? '正在讀取 Gemini 可用模型...'
+                            : '🔍 偵測帳號可用 Gemini 模型版本'}
+                        </button>
+                      )}
+                      {aiConfig.provider === 'groq' && (
+                        <button
+                          type="button"
+                          onClick={() => checkGroqModels(aiConfig.apiKey || '')}
+                          className="text-[11px] text-zinc-600 hover:text-zinc-900 underline font-medium"
+                        >
+                          {groqStatus.checking
+                            ? '正在讀取帳號可用模型...'
+                            : '🔍 偵測帳號可用模型 (GPT-OSS)'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative flex items-center">
+                      <input
+                        type={showApiKey ? 'text' : 'password'}
+                        value={aiConfig.apiKey || ''}
+                        onChange={(e) => handleApiKeyChange(e.target.value)}
+                        placeholder={
+                          currentUser
+                            ? '輸入 API Key（已自動雲端同步至帳號）'
+                            : '輸入 API Key（自動儲存於瀏覽器）'
+                        }
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg pl-3 pr-9 py-2 text-zinc-900 focus:outline-none focus:border-zinc-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey((p) => !p)}
+                        className="absolute right-2.5 text-zinc-400 hover:text-zinc-700"
+                      >
+                        {showApiKey ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-1 flex items-center justify-between">
+                      {currentUser ? (
+                        <span className="text-emerald-600 font-medium flex items-center gap-1">
+                          <Cloud className="w-3.5 h-3.5" /> 已自動與您的 Supabase 帳號 ({currentUser.email}) 雲端同步
+                        </span>
+                      ) : (
+                        <span>💡 登入帳號後，API Key 將自動備份至雲端，換電腦或換瀏覽器自動載入</span>
+                      )}
+                    </div>
+                    {aiConfig.provider === 'gemini' && geminiStatus.message && (
+                      <p
+                        className={`text-[11px] ${
+                          geminiStatus.connected ? 'text-emerald-600' : 'text-amber-600'
+                        }`}
+                      >
+                        {geminiStatus.message}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="font-medium text-zinc-700">
+                      本地 Ollama 伺服器網址
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={aiConfig.ollamaBaseUrl || 'http://localhost:11434'}
+                        onChange={(e) =>
+                          setAiConfig((prev) => ({
+                            ...prev,
+                            ollamaBaseUrl: e.target.value,
+                          }))
+                        }
+                        className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-900"
+                      />
+                      <button
+                        onClick={() =>
+                          checkOllamaConnection(
+                            aiConfig.ollamaBaseUrl || 'http://localhost:11434'
+                          )
+                        }
+                        className="px-3 py-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-medium"
+                      >
+                        {ollamaStatus.checking ? '檢測中...' : '重新偵測'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <label className="flex items-center gap-2 pt-2 cursor-pointer text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={aiConfig.enableAutoRepair}
+                    onChange={(e) =>
+                      setAiConfig((prev) => ({
+                        ...prev,
+                        enableAutoRepair: e.target.checked,
+                      }))
+                    }
+                    className="rounded border-zinc-300 text-zinc-900"
+                  />
+                  <span>啟用「本地粵拼字典驗證 + AI 連貫句子修正迴圈」（推薦開啟）</span>
+                </label>
+
+                <div className="pt-3 border-t border-zinc-100 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="font-medium text-zinc-700">Google Client ID (One Tap 原生秒登)</label>
+                    <span className="text-[10px] text-zinc-400">選填</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={googleClientId}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setGoogleClientId(val);
+                      saveGoogleClientId(val);
+                    }}
+                    placeholder="例如: xxxxxx.apps.googleusercontent.com"
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-900 focus:outline-none focus:border-zinc-900 font-mono"
+                  />
+                  <p className="text-[10px] text-zinc-400 leading-relaxed">
+                    填入在 Google Cloud Console 申請的 Web Client ID 後，將自動啟用 One Tap 浮動提示與免跳轉原生驗證。亦可於 Vercel / Netlify 環境變數設置 <code className="bg-zinc-100 px-1 py-0.5 rounded">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code>。
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: 研經口味與風格 */}
+            {settingsTab === 'scripture' && (
+              <div className="space-y-4 text-xs pt-1">
+                {/* 1. 詩歌神學傳統與口味 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-semibold text-zinc-800">
+                      詩歌神學與敬拜口味
+                    </label>
+                    <span className="text-[11px] text-zinc-400">影響 AI 用詞筆觸與旋律視角</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {SCRIPTURE_STYLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          handleUpdateScriptureTone((prev) => ({ ...prev, style: opt.id }))
+                        }
+                        className={`text-left p-2.5 rounded-xl border transition flex flex-col justify-between gap-1 ${
+                          scriptureTone.style === opt.id
+                            ? 'bg-zinc-900 text-white border-zinc-900 shadow-xs'
+                            : 'bg-zinc-50/80 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-semibold text-xs">{opt.name}</span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                              scriptureTone.style === opt.id
+                                ? 'bg-zinc-700 text-zinc-200'
+                                : 'bg-zinc-200 text-zinc-600'
+                            }`}
+                          >
+                            {opt.badge}
+                          </span>
+                        </div>
+                        <p
+                          className={`text-[10px] leading-relaxed ${
+                            scriptureTone.style === opt.id
+                              ? 'text-zinc-300'
+                              : 'text-zinc-500'
+                          }`}
+                        >
+                          {opt.desc}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. 重點研經核心主題標籤 (可多選) */}
+                <div className="space-y-2 pt-2 border-t border-zinc-100">
+                  <div className="flex items-center justify-between">
+                    <label className="font-semibold text-zinc-800">
+                      重點研經主題偏好（可多選）
+                    </label>
+                    <span className="text-[11px] text-zinc-400">已選 {scriptureTone.themes.length} 個</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {THEOLOGICAL_THEME_OPTIONS.map((theme) => {
+                      const isSelected = scriptureTone.themes.includes(theme.keyword);
+                      return (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          onClick={() => {
+                            handleUpdateScriptureTone((prev) => {
+                              const exists = prev.themes.includes(theme.keyword);
+                              const newThemes = exists
+                                ? prev.themes.filter((t) => t !== theme.keyword)
+                                : [...prev.themes, theme.keyword];
+                              return { ...prev, themes: newThemes };
+                            });
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1 ${
+                            isSelected
+                              ? 'bg-indigo-50 border-indigo-300 text-indigo-900 shadow-xs'
+                              : 'bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50'
+                          }`}
+                        >
+                          {theme.label}
+                          {isSelected && <Check className="w-3 h-3 text-indigo-600" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. 經文焦點與聖經背景 (自由填寫) */}
+                <div className="space-y-1.5 pt-2 border-t border-zinc-100">
+                  <div className="flex items-center justify-between">
+                    <label className="font-semibold text-zinc-800">
+                      經文焦點／指定聖經脈絡（選填）
+                    </label>
+                    <span className="text-[11px] text-zinc-400">如詩篇、福音書、書信</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={scriptureTone.scriptureFocus}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      handleUpdateScriptureTone((prev) => ({ ...prev, scriptureFocus: val }));
+                    }}
+                    placeholder="例如：詩篇23篇、以賽亞書40:31、浪子回頭、客西馬尼園..."
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-900 focus:bg-white focus:outline-none focus:border-zinc-900 transition"
+                  />
+                  <p className="text-[10px] text-zinc-500 leading-relaxed">
+                    💡 填寫後，AI 構思連貫句子與 0243 協音詞庫推薦時，會自動精準融入該處聖經特有的典故、比喻與專用神學名詞。
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-3 border-t border-zinc-100">
+              <span className="text-[11px] text-zinc-400">
+                設定將自動保存在瀏覽器
+              </span>
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium"
+                className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition"
               >
                 完成
               </button>
