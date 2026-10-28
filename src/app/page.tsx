@@ -473,10 +473,12 @@ export default function CantoneseLyricStudioPage() {
   const handleGoogleSignIn = async () => {
     if (!supabase) return;
     try {
+      const redirectTarget = typeof window !== 'undefined' ? window.location.origin : undefined;
+      console.log('[Auth] Initiating Google OAuth with redirectTo:', redirectTarget);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+          redirectTo: redirectTarget,
         },
       });
       if (error) throw error;
