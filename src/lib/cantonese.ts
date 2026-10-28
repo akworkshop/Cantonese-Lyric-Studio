@@ -31,7 +31,7 @@ const THEOLOGICAL_JYUTPING_OVERRIDES: Record<string, string[]> = {
   敬: ['ging3'],
   拜: ['baai3'],
   讚: ['zaan3'],
-  美: ['mei5'],
+  美: ['mei5', 'mei2'],
   榮: ['wing4'],
   耀: ['jiu6'],
   哈: ['haa1'],
@@ -137,6 +137,10 @@ const THEOLOGICAL_JYUTPING_OVERRIDES: Record<string, string[]> = {
   著: ['zoek6', 'zyu3'],
   縱: ['zung3'],
   仍: ['jing4'],
+  仗: ['zoeng3', 'zoeng6'],
+  跨: ['kwaa1', 'kwaa3'],
+  旦: ['daan6', 'daan3'],
+  罕: ['hon3', 'hon2'],
 };
 
 /**
@@ -313,6 +317,39 @@ export function evaluateVocalErgonomics(
  *    - 作動詞「更新/更改」（如：更新、更改、更替）讀 gang1（陰平，歸入 3 聲）
  *    由上下文或目標聲調自動對位，不再硬性鎖死為單一聲階。
  */
+/**
+ * 粵語詩歌特定詞組協音專屬審音與 0243 聲階覆蓋表
+ * 處理詩歌傳統讀音、口語高調、習慣性變調（如「打美好仗 3434」、「跨過約旦 3442」、「亞伯拉罕 4434」）
+ */
+export const CUSTOM_PHRASE_0243_OVERRIDES: Record<
+  string,
+  {
+    pattern: string;
+    jyutpings: string[];
+  }
+> = {
+  '跨過約旦': {
+    pattern: '3442',
+    jyutpings: ['kwaa1', 'gwo3', 'joek3', 'daan6'],
+  },
+  '跨約旦': {
+    pattern: '342',
+    jyutpings: ['kwaa1', 'joek3', 'daan6'],
+  },
+  '亞伯拉罕': {
+    pattern: '4434',
+    jyutpings: ['aa3', 'baak3', 'laai1', 'hon3'],
+  },
+  '跑盡當跑': {
+    pattern: '3234',
+    jyutpings: ['paau2', 'zeon6', 'dong1', 'paau3'],
+  },
+  '打美好仗': {
+    pattern: '3434',
+    jyutpings: ['daa2', 'mei2', 'hou2', 'zoeng3'],
+  },
+};
+
 const CUSTOM_0243_TONE_OVERRIDES: Record<string, string> = {
   我: '4',
   你: '4',
@@ -568,11 +605,13 @@ export function verifyPhraseAgainstPattern(
   endErgonomics: VocalErgonomicsInfo;
 } {
   const cleanChars = Array.from(phrase.replace(/[^\u4e00-\u9fa5]/g, ''));
+  const cleanStr = cleanChars.join('');
   const targetTones = Array.from(targetPattern.trim());
+  const phraseOverride = CUSTOM_PHRASE_0243_OVERRIDES[cleanStr];
 
   let phraseJpList: [string, string][] = [];
   try {
-    const list = ToJyutping.getJyutpingList(cleanChars.join(''));
+    const list = ToJyutping.getJyutpingList(cleanStr);
     if (list && list.length === cleanChars.length) {
       phraseJpList = list as [string, string][];
     }
@@ -582,8 +621,9 @@ export function verifyPhraseAgainstPattern(
 
   const tokens: LyricToken[] = targetTones.map((expected, idx) => {
     const char = cleanChars[idx] || '？';
-    const contextJp = phraseJpList[idx]?.[1];
-    return analyzeCharToken(
+    const overrideJp = phraseOverride?.jyutpings?.[idx];
+    const contextJp = overrideJp || phraseJpList[idx]?.[1];
+    const token = analyzeCharToken(
       char,
       expected,
       idx === targetTones.length - 1,
@@ -591,6 +631,19 @@ export function verifyPhraseAgainstPattern(
       undefined,
       contextJp
     );
+
+    if (phraseOverride && idx < cleanChars.length) {
+      const overrideTone = phraseOverride.pattern[idx];
+      if (overrideTone) {
+        token.actualTone = overrideTone;
+        token.status = overrideTone === expected ? 'normal' : 'tone_mismatch';
+        if (overrideJp) {
+          token.jyutping = overrideJp;
+        }
+      }
+    }
+
+    return token;
   });
 
   const actualPattern = tokens.map((t) => t.actualTone).join('');
@@ -635,6 +688,16 @@ export function getPhrasePrimary0243(phrase: string): {
   lastCharOpenEnding: boolean;
 } {
   const clean = phrase.replace(/[^\u4e00-\u9fa5]/g, '');
+  const phraseOverride = CUSTOM_PHRASE_0243_OVERRIDES[clean];
+  if (phraseOverride) {
+    const lastJp = phraseOverride.jyutpings[phraseOverride.jyutpings.length - 1] || '';
+    const lastInfo = jyutpingTo0243(lastJp);
+    return {
+      pattern: phraseOverride.pattern,
+      jyutpings: [...phraseOverride.jyutpings],
+      lastCharOpenEnding: !lastInfo.isStopped && !lastInfo.isClosedM,
+    };
+  }
   const chars = Array.from(clean);
   const tones: string[] = [];
   const jyutpings: string[] = [];
