@@ -33,6 +33,7 @@ import {
   LogOut,
   Cloud,
   Crown,
+  Menu,
   Coffee,
   ExternalLink,
 } from 'lucide-react';
@@ -236,6 +237,37 @@ export default function CantoneseLyricStudioPage() {
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<'config' | 'editor'>('editor');
+  const [showMobileMenuModal, setShowMobileMenuModal] = useState<boolean>(false);
+
+  // 📱 手機觸控左右滑動 (Swipe Left / Right) 切換「歌曲與0243譜」與「填詞畫布」
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+    touchStartYRef.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartYRef.current;
+
+    // 水平滑動距離大於 50px 且水平位移明顯大於垂直位移（1.2 倍）
+    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      if (deltaX < 0) {
+        // 向左滑 (Swipe Left) -> 進入填詞畫布
+        setMobileTab('editor');
+      } else {
+        // 向右滑 (Swipe Right) -> 進入歌曲設定與 0243 譜
+        setMobileTab('config');
+      }
+    }
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+  };
+
   const [googleClientId, setGoogleClientId] = useState<string>('');
   const [isGsiReady, setIsGsiReady] = useState<boolean>(false);
   const [showGoogleConfig, setShowGoogleConfig] = useState<boolean>(false);
@@ -1109,6 +1141,7 @@ export default function CantoneseLyricStudioPage() {
   const handleAIGenerateLyrics = async () => {
     setErrorBanner(null);
     setIsGeneratingLyrics(true);
+    setMobileTab('editor');
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
@@ -1472,170 +1505,250 @@ export default function CantoneseLyricStudioPage() {
         </div>
       )}
 
-      {/* 極簡純白頂部導航列（支援手機響應式橫滑與自適應緊湊佈局） */}
-      <header className="sticky top-0 z-30 h-14 bg-white/95 backdrop-blur-md border-b border-zinc-200 px-2.5 sm:px-6 flex items-center justify-between gap-1.5 sm:gap-3 overflow-x-auto no-scrollbar">
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          <button
-            onClick={() => setSidebarOpen((p) => !p)}
-            className="p-2 rounded-lg hover:bg-zinc-100 text-zinc-600 transition"
-            title={sidebarOpen ? '收合左側輸入欄' : '展開左側輸入欄'}
-          >
-            {sidebarOpen ? (
-              <PanelLeftClose className="w-4 h-4" />
-            ) : (
-              <PanelLeftOpen className="w-4 h-4" />
-            )}
-          </button>
-
-          <div className="flex items-center gap-1.5">
-            <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center">
+      {/* 頂部導航列：桌面端完整列 + 手機端精簡兩段式（解決圖標過長問題） */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-zinc-200">
+        {/* 📱 手機版專屬頂欄 (lg:hidden) */}
+        <div className="flex lg:hidden items-center justify-between px-3 h-13 gap-2 border-b border-zinc-100">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center shrink-0">
               <Music className="w-3.5 h-3.5" />
             </div>
-            <span className="font-semibold text-sm tracking-tight text-zinc-900 hidden md:inline">
-              Cantonese Lyric Studio
+            <span className="font-bold text-sm tracking-tight text-zinc-900">
+              Cantonese Lyric
             </span>
           </div>
 
-          <div className="h-4 w-px bg-zinc-200 mx-0.5 sm:mx-1" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* ☕ 支持事工 */}
+            <a
+              href="https://buymeacoffee.com/akworkshop"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/90 text-xs font-semibold flex items-center gap-1 shadow-xs transition"
+              title="請作者飲杯咖啡 ☕"
+            >
+              <Coffee className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-[11px]">支持 ☕</span>
+            </a>
 
-          {/* 專案管理快捷按鈕：新專案 / 讀取專案 / 儲存 */}
-          <button
-            onClick={() => {
-              setNewProjForm({
-                title: '',
-                meaning: '',
-                patternText: '2342 433\n2442 0222',
-              });
-              setShowNewProjectModal(true);
-            }}
-            className="px-2 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 text-xs font-medium flex items-center gap-1 shrink-0 transition"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">新專案</span>
-          </button>
+            {/* 💾 快速儲存 */}
+            <button
+              onClick={() => handleSaveCurrentProject(false)}
+              className="p-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition"
+              title="儲存專案進度"
+            >
+              <Save className="w-4 h-4 text-zinc-600" />
+            </button>
 
-          <button
-            onClick={() => setShowProjectModal(true)}
-            className="px-2 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 text-xs font-medium flex items-center gap-1 shrink-0 transition"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-zinc-600" />
-            <span className="hidden md:inline">讀取專案</span>
-            <span className="text-[11px] text-zinc-500">({savedProjects.length})</span>
-          </button>
+            {/* 📋 複製歌詞 */}
+            <button
+              onClick={() => handleCopyLyrics(false)}
+              className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white transition"
+              title="複製歌詞"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
 
-          <button
-            onClick={() => handleSaveCurrentProject(false)}
-            className="px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-zinc-100 text-zinc-700 text-xs font-medium flex items-center gap-1 shrink-0 transition"
-            title="儲存目前專案進度"
-          >
-            <Save className="w-3.5 h-3.5 text-zinc-500" />
-            <span className="hidden sm:inline">儲存</span>
-          </button>
+            {/* ☰ 更多功能選單 */}
+            <button
+              onClick={() => setShowMobileMenuModal(true)}
+              className="p-2 rounded-lg hover:bg-zinc-100 text-zinc-700 transition"
+              title="開啟完整選單"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* 右側精簡工具按鈕 */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <button
-            onClick={() => setShowToneGuideModal(true)}
-            className="px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-100 transition flex items-center gap-1 shrink-0"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-zinc-500" />
-            <span className="hidden lg:inline">0243 聲調表</span>
-          </button>
+        {/* 📱 手機版分頁切換列：歌曲設定與0243譜 ⇄ 填詞畫布 (lg:hidden) */}
+        <div className="block lg:hidden px-3 py-1.5 bg-zinc-50/70">
+          <div className="flex p-1 bg-zinc-200/70 rounded-xl text-xs font-semibold shadow-inner">
+            <button
+              onClick={() => setMobileTab('config')}
+              className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
+                mobileTab === 'config'
+                  ? 'bg-white text-zinc-900 shadow-xs font-bold'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              <Music className="w-3.5 h-3.5 text-zinc-600" />
+              <span>1. 歌曲與 0243 譜</span>
+            </button>
+            <button
+              onClick={() => setMobileTab('editor')}
+              className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
+                mobileTab === 'editor'
+                  ? 'bg-white text-zinc-900 shadow-xs font-bold'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>2. 填詞畫布 (${projectMetrics.accuracy}%)</span>
+            </button>
+          </div>
+        </div>
 
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 text-zinc-800 transition flex items-center gap-1.5 shrink-0"
-          >
-            <Settings className="w-3.5 h-3.5 text-zinc-600" />
-            <span className="hidden sm:inline">模型：</span>
-            <span>{aiConfig.provider.toUpperCase()}</span>
-          </button>
+        {/* 💻 桌面版完整功能導航列 (hidden lg:flex) */}
+        <div className="hidden lg:flex h-14 px-6 items-center justify-between gap-3 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => setSidebarOpen((p) => !p)}
+              className="p-2 rounded-lg hover:bg-zinc-100 text-zinc-600 transition"
+              title={sidebarOpen ? '收合左側輸入欄' : '展開左側輸入欄'}
+            >
+              {sidebarOpen ? (
+                <PanelLeftClose className="w-4 h-4" />
+              ) : (
+                <PanelLeftOpen className="w-4 h-4" />
+              )}
+            </button>
 
-          {/* ☕ 支持事工 (Buy Me a Coffee) */}
-          <a
-            href="https://buymeacoffee.com/akworkshop"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/90 text-xs font-medium flex items-center gap-1.5 shrink-0 transition shadow-xs group"
-            title="請作者飲杯咖啡 ☕ 希望大家支持這個事工！"
-          >
-            <Coffee className="w-3.5 h-3.5 text-amber-600 group-hover:scale-110 transition-transform" />
-            <span className="hidden sm:inline">支持事工</span>
-            <span className="text-[11px] font-normal text-amber-700">☕</span>
-          </a>
-
-          <div className="h-4 w-px bg-zinc-200 mx-0.5 hidden sm:block" />
-
-          <button
-            onClick={handleUndo}
-            disabled={historyIndex <= 0}
-            className="p-1.5 rounded-lg hover:bg-zinc-100 disabled:opacity-30 text-zinc-600 transition"
-            title="復原"
-          >
-            <Undo2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleRedo}
-            disabled={historyIndex >= history.length - 1}
-            className="p-1.5 rounded-lg hover:bg-zinc-100 disabled:opacity-30 text-zinc-600 transition"
-            title="重做"
-          >
-            <Redo2 className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => handleCopyLyrics(false)}
-            className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition flex items-center gap-1.5 shrink-0"
-          >
-            <Copy className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">複製歌詞</span>
-          </button>
-
-          <div className="h-4 w-px bg-zinc-200 mx-0.5" />
-
-          {/* 👤 帳號登入與訂閱狀態按鈕 (Supabase Auth & Subscription Tier) */}
-          {currentUser ? (
-            <div className="flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200/80 rounded-xl px-2.5 py-1 transition border border-zinc-200/60 shrink-0">
-              <div className="w-5 h-5 rounded-full bg-zinc-900 text-white flex items-center justify-center text-[10px] font-bold">
-                {currentUser.email?.[0]?.toUpperCase() || 'U'}
+            <div className="flex items-center gap-1.5">
+              <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center">
+                <Music className="w-3.5 h-3.5" />
               </div>
-              <div className="flex flex-col text-left leading-tight hidden md:flex">
-                <span className="text-[11px] font-medium text-zinc-900 max-w-[110px] truncate">
-                  {currentUser.email}
-                </span>
-                <span className="text-[9px] font-semibold flex items-center gap-0.5 text-emerald-700">
-                  <Crown className="w-2.5 h-2.5 text-amber-500" />
-                  {userProfile?.subscriptionTier === 'pro'
-                    ? 'Pro 訂閱會員'
-                    : userProfile?.subscriptionTier === 'church'
-                    ? 'Church 敬拜隊'
-                    : 'Free 免費版'}
-                </span>
-              </div>
-              <button
-                onClick={handleSignOut}
-                title="登出帳號"
-                className="p-1 text-zinc-400 hover:text-rose-600 transition ml-0.5"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
+              <span className="font-semibold text-sm tracking-tight text-zinc-900">
+                Cantonese Lyric Studio
+              </span>
             </div>
-          ) : (
+
+            <div className="h-4 w-px bg-zinc-200 mx-1" />
+
             <button
               onClick={() => {
-                setAuthError(null);
-                setAuthSuccessMsg(null);
-                setShowAuthModal(true);
+                setNewProjForm({
+                  title: '',
+                  meaning: '',
+                  patternText: '2342 433\n2442 0222',
+                });
+                setShowNewProjectModal(true);
               }}
-              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1.5 shadow-xs shrink-0 transition"
-              title="登入 Supabase 帳號，支援跨電腦／手機雲端同步詩歌專案"
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 text-xs font-medium flex items-center gap-1 shrink-0 transition"
             >
-              <LogIn className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">登入 / 雲端同步</span>
-              <span className="sm:hidden">登入</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>新專案</span>
             </button>
-          )}
+
+            <button
+              onClick={() => setShowProjectModal(true)}
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 text-xs font-medium flex items-center gap-1 shrink-0 transition"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-zinc-600" />
+              <span>讀取專案</span>
+              <span className="text-[11px] text-zinc-500">({savedProjects.length})</span>
+            </button>
+
+            <button
+              onClick={() => handleSaveCurrentProject(false)}
+              className="px-2.5 py-1.5 rounded-lg hover:bg-zinc-100 text-zinc-700 text-xs font-medium flex items-center gap-1 shrink-0 transition"
+              title="儲存目前專案進度"
+            >
+              <Save className="w-3.5 h-3.5 text-zinc-500" />
+              <span>儲存</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowToneGuideModal(true)}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-100 transition flex items-center gap-1 shrink-0"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-zinc-500" />
+              <span>0243 聲調表</span>
+            </button>
+
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 hover:bg-zinc-200/80 text-zinc-800 transition flex items-center gap-1.5 shrink-0"
+            >
+              <Settings className="w-3.5 h-3.5 text-zinc-600" />
+              <span>模型：</span>
+              <span>{aiConfig.provider.toUpperCase()}</span>
+            </button>
+
+            {/* ☕ 支持事工 (Buy Me a Coffee) */}
+            <a
+              href="https://buymeacoffee.com/akworkshop"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/90 text-xs font-medium flex items-center gap-1.5 shrink-0 transition shadow-xs group"
+              title="請作者飲杯咖啡 ☕ 希望大家支持這個事工！"
+            >
+              <Coffee className="w-3.5 h-3.5 text-amber-600 group-hover:scale-110 transition-transform" />
+              <span>支持事工</span>
+              <span className="text-[11px] font-normal text-amber-700">☕</span>
+            </a>
+
+            <div className="h-4 w-px bg-zinc-200 mx-0.5" />
+
+            <button
+              onClick={handleUndo}
+              disabled={historyIndex <= 0}
+              className="p-1.5 rounded-lg hover:bg-zinc-100 disabled:opacity-30 text-zinc-600 transition"
+              title="復原"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={historyIndex >= history.length - 1}
+              className="p-1.5 rounded-lg hover:bg-zinc-100 disabled:opacity-30 text-zinc-600 transition"
+              title="重做"
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={() => handleCopyLyrics(false)}
+              className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition flex items-center gap-1.5 shrink-0"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>複製歌詞</span>
+            </button>
+
+            <div className="h-4 w-px bg-zinc-200 mx-0.5" />
+
+            {currentUser ? (
+              <div className="flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200/80 rounded-xl px-2.5 py-1 transition border border-zinc-200/60 shrink-0">
+                <div className="w-5 h-5 rounded-full bg-zinc-900 text-white flex items-center justify-center text-[10px] font-bold">
+                  {currentUser.email?.[0]?.toUpperCase() || 'U'}
+                </div>
+                <div className="flex flex-col text-left leading-tight">
+                  <span className="text-[11px] font-medium text-zinc-900 max-w-[110px] truncate">
+                    {currentUser.email}
+                  </span>
+                  <span className="text-[9px] font-semibold flex items-center gap-0.5 text-emerald-700">
+                    <Crown className="w-2.5 h-2.5 text-amber-500" />
+                    {userProfile?.subscriptionTier === 'pro'
+                      ? 'Pro 訂閱會員'
+                      : userProfile?.subscriptionTier === 'church'
+                      ? 'Church 敬拜隊'
+                      : 'Free 免費版'}
+                  </span>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  title="登出帳號"
+                  className="p-1 text-zinc-400 hover:text-rose-600 transition ml-0.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setAuthError(null);
+                  setAuthSuccessMsg(null);
+                  setShowAuthModal(true);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1.5 shadow-xs shrink-0 transition"
+                title="登入 Supabase 帳號，支援跨電腦／手機雲端同步詩歌專案"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>登入 / 雲端同步</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1660,32 +1773,33 @@ export default function CantoneseLyricStudioPage() {
         </div>
       )}
 
-      {/* 主內容區：可收合側欄 + 超寬敞歌詞畫布 */}
-      <div className="flex-1 flex items-start max-w-[1600px] w-full mx-auto">
-        {/* 左側輸入欄（支援桌面常駐與手機滑出式抽屜 Drawer） */}
-        {sidebarOpen && (
-          <>
-            {/* 手機版半透明遮罩背景 */}
-            <div
-              onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 bg-black/40 z-40 lg:hidden backdrop-blur-xs transition-opacity"
-            />
-
-            <aside className="fixed inset-y-0 left-0 z-50 w-[88vw] max-w-xs bg-white border-r border-zinc-200 overflow-y-auto p-4 sm:p-5 flex flex-col gap-5 shadow-2xl lg:static lg:z-auto lg:shadow-none lg:w-80 lg:shrink-0 lg:min-h-[calc(100vh-3.5rem)] transition-all">
-              {/* 手機版頂部標題與關閉按鈕 */}
-              <div className="flex items-center justify-between lg:hidden pb-2.5 border-b border-zinc-100">
-                <span className="font-semibold text-sm text-zinc-900 flex items-center gap-1.5">
-                  <Music className="w-4 h-4 text-zinc-700" />
-                  歌曲設定與 0243 譜
-                </span>
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-500"
-                  title="關閉側邊欄"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+      {/* 主內容區：支援手機滑動手勢 (Swipe Left/Right) 與雙端自適應切換 */}
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="flex-1 flex items-start max-w-[1600px] w-full mx-auto"
+      >
+        {/* 左側輸入欄：手機端依 mobileTab ('config') 呈現；桌面端依 sidebarOpen 呈現 */}
+        <aside
+          className={`${
+            mobileTab === 'config' ? 'flex' : 'hidden lg:flex'
+          } ${
+            sidebarOpen ? 'lg:flex' : 'lg:hidden'
+          } w-full lg:w-80 lg:shrink-0 bg-white border-r border-zinc-200 overflow-y-auto p-4 sm:p-5 flex-col gap-5 lg:min-h-[calc(100vh-3.5rem)] transition-all`}
+        >
+          {/* 手機端頂部引導切換提示 */}
+          <div className="flex items-center justify-between lg:hidden pb-2.5 border-b border-zinc-100">
+            <span className="font-bold text-sm text-zinc-900 flex items-center gap-1.5">
+              <Music className="w-4 h-4 text-zinc-700" />
+              歌曲設定與 0243 譜
+            </span>
+            <button
+              onClick={() => setMobileTab('editor')}
+              className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 transition"
+            >
+              前往填詞畫布 👉
+            </button>
+          </div>
             {/* 範例快速選擇 */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -1796,18 +1910,25 @@ export default function CantoneseLyricStudioPage() {
                 </a>
               </div>
             </div>
-          </aside>
-          </>
-        )}
+        </aside>
 
-        {/* 中央超寬敞歌詞畫布（支援手機響應式邊距與觸控橫滑） */}
+        {/* 中央歌詞畫布：手機端依 mobileTab ('editor') 呈現，桌面端常駐呈現 */}
         <main
-          className="flex-1 p-3.5 sm:p-8 lg:p-10 min-w-0"
+          className={`${
+            mobileTab === 'editor' ? 'block' : 'hidden lg:block'
+          } flex-1 p-3.5 sm:p-8 lg:p-10 min-w-0`}
           onClick={() => {
             setSelectedRef(null);
             setEditingGroupRef(null);
           }}
         >
+          {/* 📱 手機端滑動提示 */}
+          <div className="lg:hidden mb-3 text-center">
+            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-zinc-100/90 text-zinc-500 text-[11px] font-medium border border-zinc-200/60">
+              <span>👈 左右滑動可切換「樂譜設定」與「填詞畫布」👉</span>
+            </span>
+          </div>
+
           {/* 歌曲標題與極簡狀態列 */}
           <div className="max-w-5xl mx-auto mb-6 sm:mb-8 flex flex-wrap items-end justify-between gap-3 sm:gap-4 border-b border-zinc-200 pb-4 sm:pb-5">
             <div>
@@ -1861,13 +1982,13 @@ export default function CantoneseLyricStudioPage() {
                       : 'border-zinc-200/90 shadow-sm hover:border-zinc-300'
                   }`}
                 >
-                  {/* 行號與極簡字詞橫排 */}
-                  <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto pb-1">
-                    <div className="w-6 sm:w-7 shrink-0 text-xs font-mono font-semibold text-zinc-400 select-none">
+                  {/* 行號與多行自適應字詞排版（支援太長自動換行，無需水平滑動） */}
+                  <div className="flex items-start gap-2 sm:gap-4 pb-1">
+                    <div className="w-6 sm:w-7 shrink-0 text-xs font-mono font-semibold text-zinc-400 select-none pt-3 sm:pt-4">
                       {String(lIdx + 1).padStart(2, '0')}
                     </div>
 
-                    <div className="flex items-center gap-2.5 sm:gap-5 flex-nowrap">
+                    <div className="flex items-center gap-2 sm:gap-4 flex-wrap flex-1">
                       {line.groups.map((group, gIdx) => {
                         const isGroupSelected =
                           selectedRef?.lineIdx === lIdx &&
@@ -1964,7 +2085,7 @@ export default function CantoneseLyricStudioPage() {
                                           .join(''),
                                       })
                                     }
-                                    className={`w-12 h-14 rounded-xl border flex flex-col items-center justify-center transition select-none shrink-0 ${cardStyle} ${
+                                    className={`w-11 h-13 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center transition select-none shrink-0 ${cardStyle} ${
                                       isTokenSelected
                                         ? 'ring-2 ring-zinc-900 shadow-sm -translate-y-0.5'
                                         : ''
@@ -2694,6 +2815,187 @@ export default function CantoneseLyricStudioPage() {
               >
                 關閉
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📱 手機版全功能選單 Modal (解決頂欄過多按鈕問題) */}
+      {showMobileMenuModal && (
+        <div
+          onClick={() => setShowMobileMenuModal(false)}
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-t-2xl sm:rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-zinc-200 animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 max-h-[85vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <span className="font-bold text-sm text-zinc-900 flex items-center gap-2">
+                <Music className="w-4 h-4 text-zinc-700" />
+                功能選單
+              </span>
+              <button
+                onClick={() => setShowMobileMenuModal(false)}
+                className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 帳號登入狀態 */}
+            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200/80">
+              {currentUser ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-bold">
+                      {currentUser.email?.[0]?.toUpperCase() || 'U'}
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-zinc-900 truncate max-w-[180px]">
+                        {currentUser.email}
+                      </div>
+                      <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1">
+                        <Crown className="w-3 h-3 text-amber-500" />
+                        {userProfile?.subscriptionTier === 'pro'
+                          ? 'Pro 訂閱會員'
+                          : userProfile?.subscriptionTier === 'church'
+                          ? 'Church 敬拜隊'
+                          : 'Free 免費版'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleSignOut();
+                      setShowMobileMenuModal(false);
+                    }}
+                    className="p-2 text-zinc-400 hover:text-rose-600 transition"
+                    title="登出"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowMobileMenuModal(false);
+                    setAuthError(null);
+                    setAuthSuccessMsg(null);
+                    setShowAuthModal(true);
+                  }}
+                  className="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center justify-center gap-2 shadow-xs transition"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>登入帳號 / 跨裝置雲端同步</span>
+                </button>
+              )}
+            </div>
+
+            {/* 專案操作清單 */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 px-1">
+                專案操作
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setShowMobileMenuModal(false);
+                    setNewProjForm({
+                      title: '',
+                      meaning: '',
+                      patternText: '2342 433\n2442 0222',
+                    });
+                    setShowNewProjectModal(true);
+                  }}
+                  className="p-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/80 text-left flex items-center gap-2 text-xs font-medium text-zinc-900"
+                >
+                  <Plus className="w-4 h-4 text-zinc-600" />
+                  <span>新專案</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenuModal(false);
+                    setShowProjectModal(true);
+                  }}
+                  className="p-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/80 text-left flex items-center gap-2 text-xs font-medium text-zinc-900"
+                >
+                  <FolderOpen className="w-4 h-4 text-zinc-600" />
+                  <span>讀取專案 ({savedProjects.length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 填詞輔助與設定 */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 px-1">
+                工具與設定
+              </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleUndo}
+                    disabled={historyIndex <= 0}
+                    className="flex-1 py-2 px-3 rounded-xl bg-zinc-50 hover:bg-zinc-100 disabled:opacity-40 border border-zinc-200/80 flex items-center justify-center gap-1.5 text-xs text-zinc-700"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>復原</span>
+                  </button>
+                  <button
+                    onClick={handleRedo}
+                    disabled={historyIndex >= history.length - 1}
+                    className="flex-1 py-2 px-3 rounded-xl bg-zinc-50 hover:bg-zinc-100 disabled:opacity-40 border border-zinc-200/80 flex items-center justify-center gap-1.5 text-xs text-zinc-700"
+                  >
+                    <Redo2 className="w-3.5 h-3.5" />
+                    <span>重做</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenuModal(false);
+                    setShowToneGuideModal(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/80 flex items-center justify-between text-xs font-medium text-zinc-800"
+                >
+                  <span className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-zinc-600" />
+                    <span>0243 協音聲調對照表</span>
+                  </span>
+                  <span className="text-[10px] text-zinc-400">查看</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenuModal(false);
+                    setShowSettingsModal(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/80 flex items-center justify-between text-xs font-medium text-zinc-800"
+                >
+                  <span className="flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-zinc-600" />
+                    <span>AI 模型與金鑰設定</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-zinc-500">
+                    {aiConfig.provider.toUpperCase()}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* 支持事工 */}
+            <div className="pt-2 border-t border-zinc-100">
+              <a
+                href="https://buymeacoffee.com/akworkshop"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2.5 px-3 rounded-xl bg-[#FFDD00] hover:bg-[#FFDD00]/90 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition"
+              >
+                <Coffee className="w-4 h-4" />
+                <span>請作者飲杯咖啡 ☕ (Buy me a coffee)</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+              </a>
             </div>
           </div>
         </div>
