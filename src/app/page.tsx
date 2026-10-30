@@ -1773,20 +1773,26 @@ export default function CantoneseLyricStudioPage() {
         </div>
       )}
 
-      {/* 主內容區：支援手機滑動手勢 (Swipe Left/Right) 與雙端自適應切換 */}
+      {/* 主內容區：手機端支援滑動過場動畫 (Smooth Slide Transition) 與左右手勢 */}
       <div
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 flex items-start max-w-[1600px] w-full mx-auto"
+        className="flex-1 w-full max-w-[1600px] mx-auto overflow-hidden lg:overflow-visible"
       >
-        {/* 左側輸入欄：手機端依 mobileTab ('config') 呈現；桌面端依 sidebarOpen 呈現 */}
-        <aside
-          className={`${
-            mobileTab === 'config' ? 'flex' : 'hidden lg:flex'
-          } ${
-            sidebarOpen ? 'lg:flex' : 'lg:hidden'
-          } w-full lg:w-80 lg:shrink-0 bg-white border-r border-zinc-200 overflow-y-auto p-4 sm:p-5 flex-col gap-5 lg:min-h-[calc(100vh-3.5rem)] transition-all`}
+        {/* 手機版：200% 寬度滑軌容器，帶有 300ms 平滑過場動畫；桌面版：恢復原生 flex 左右並排 */}
+        <div
+          className={`w-[200%] lg:w-full flex items-start transition-transform duration-300 ease-out will-change-transform ${
+            mobileTab === 'editor'
+              ? '-translate-x-1/2 lg:translate-x-0'
+              : 'translate-x-0'
+          }`}
         >
+          {/* 🎼 頁籤 1：歌曲設定與 0243 譜（手機寬度 50% = 螢幕 100vw；桌面端固定 320px） */}
+          <aside
+            className={`w-1/2 lg:w-80 lg:shrink-0 bg-white border-r border-zinc-200 overflow-y-auto p-4 sm:p-5 flex flex-col gap-5 lg:min-h-[calc(100vh-3.5rem)] ${
+              sidebarOpen ? 'lg:flex' : 'lg:hidden'
+            }`}
+          >
           {/* 手機端頂部引導切換提示 */}
           <div className="flex items-center justify-between lg:hidden pb-2.5 border-b border-zinc-100">
             <span className="font-bold text-sm text-zinc-900 flex items-center gap-1.5">
@@ -1910,18 +1916,16 @@ export default function CantoneseLyricStudioPage() {
                 </a>
               </div>
             </div>
-        </aside>
+          </aside>
 
-        {/* 中央歌詞畫布：手機端依 mobileTab ('editor') 呈現，桌面端常駐呈現 */}
-        <main
-          className={`${
-            mobileTab === 'editor' ? 'block' : 'hidden lg:block'
-          } flex-1 p-3.5 sm:p-8 lg:p-10 min-w-0`}
-          onClick={() => {
-            setSelectedRef(null);
-            setEditingGroupRef(null);
-          }}
-        >
+          {/* ✍️ 頁籤 2：中央歌詞畫布（手機寬度 50% = 螢幕 100vw；桌面端 flex-1 填滿） */}
+          <main
+            className="w-1/2 lg:w-auto lg:flex-1 p-3.5 sm:p-8 lg:p-10 min-w-0"
+            onClick={() => {
+              setSelectedRef(null);
+              setEditingGroupRef(null);
+            }}
+          >
           {/* 📱 手機端滑動提示 */}
           <div className="lg:hidden mb-3 text-center">
             <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-zinc-100/90 text-zinc-500 text-[11px] font-medium border border-zinc-200/60">
@@ -2406,7 +2410,8 @@ export default function CantoneseLyricStudioPage() {
               );
             })}
           </div>
-        </main>
+          </main>
+        </div>
       </div>
 
       {/* ☕ AI 正在生成中的介面 (Generating Overlay & Buy Me a Coffee) */}
