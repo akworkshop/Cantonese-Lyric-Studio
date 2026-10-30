@@ -33,6 +33,8 @@ import {
   LogOut,
   Cloud,
   Crown,
+  Coffee,
+  ExternalLink,
 } from 'lucide-react';
 import {
   AIProviderConfig,
@@ -1550,6 +1552,19 @@ export default function CantoneseLyricStudioPage() {
             <span>{aiConfig.provider.toUpperCase()}</span>
           </button>
 
+          {/* ☕ 支持事工 (Buy Me a Coffee) */}
+          <a
+            href="https://buymeacoffee.com/akworkshop"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/90 text-xs font-medium flex items-center gap-1.5 shrink-0 transition shadow-xs group"
+            title="請作者飲杯咖啡 ☕ 希望大家支持這個事工！"
+          >
+            <Coffee className="w-3.5 h-3.5 text-amber-600 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">支持事工</span>
+            <span className="text-[11px] font-normal text-amber-700">☕</span>
+          </a>
+
           <div className="h-4 w-px bg-zinc-200 mx-0.5 hidden sm:block" />
 
           <button
@@ -1766,6 +1781,20 @@ export default function CantoneseLyricStudioPage() {
               >
                 <span>用內建「我/祢」抒情詞庫填詞</span>
               </button>
+
+              {/* ☕ 支持事工溫馨提示 */}
+              <div className="pt-1.5 text-center">
+                <a
+                  href="https://buymeacoffee.com/akworkshop"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-amber-800 transition group"
+                  title="希望大家支持這個事工！"
+                >
+                  <Coffee className="w-3.5 h-3.5 text-amber-600 group-hover:scale-110 transition-transform" />
+                  <span>希望大家支持這個事工！☕</span>
+                </a>
+              </div>
             </div>
           </aside>
           </>
@@ -2258,6 +2287,52 @@ export default function CantoneseLyricStudioPage() {
           </div>
         </main>
       </div>
+
+      {/* ☕ AI 正在生成中的介面 (Generating Overlay & Buy Me a Coffee) */}
+      {isGeneratingLyrics && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-zinc-200 text-center space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 border border-amber-200/90 flex items-center justify-center text-amber-600 shadow-inner">
+              <RefreshCw className="w-7 h-7 animate-spin text-amber-600" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base sm:text-lg font-bold text-zinc-900">
+                AI 正在構思 0243 協音歌詞...
+              </h3>
+              <p className="text-xs text-zinc-500 leading-relaxed max-w-xs mx-auto">
+                正在依據「{title || '你的故事'}」意境匹配粵語詞庫，嚴格死守原音階，請稍候片刻...
+              </p>
+            </div>
+
+            {/* Buy Me a Coffee 支持事工卡片 */}
+            <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200/90 text-left space-y-2.5 shadow-xs">
+              <div className="flex items-center gap-2 text-amber-950 font-semibold text-xs sm:text-sm">
+                <Coffee className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>希望大家支持這個事工！☕</span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-amber-900/80 leading-relaxed">
+                Cantonese Lyric Studio 是一項全心推動粵語基督教詩歌創作的事工。如果你覺得這個工具有幫助，歡迎請作者飲杯咖啡，支持事工持續營運與 AI 運算費用！
+              </p>
+              <div className="pt-1">
+                <a
+                  href="https://buymeacoffee.com/akworkshop"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-lg bg-[#FFDD00] hover:bg-[#FFDD00]/90 text-zinc-950 font-bold text-xs shadow-sm transition hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  <span>☕ 請作者飲杯咖啡 (Buy me a coffee)</span>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                </a>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-zinc-400">
+              AI 填詞完成後將自動填入畫布
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ➕ 建立新專案 Modal (New Project) */}
       {showNewProjectModal && (
