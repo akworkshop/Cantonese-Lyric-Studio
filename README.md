@@ -13,7 +13,8 @@
 
 <p align="center">
   <b>基於「0243 填詞法」的智能粵語基督教詩歌創作平台</b><br/>
-  死守原曲音階，同義靈動換詞。告別廣東話「倒音」困擾，幫助創作者更有效創作更多感動人心的原創詩歌，同心榮耀神！
+  死守原曲音階，同義靈動換詞。告別廣東話「倒音」困擾，幫助創作者更有效創作更多感動人心的原創詩歌，同心榮耀神！<br/>
+  <sub>This is created with ❤️ by Jacky from <a href="https://buymeacoffee.com/akworkshop">AK Workshop 阿基工作室</a></sub>
 </p>
 
 ---
@@ -196,7 +197,7 @@ npm run dev
 
 ## ☕ 支持這項事工 (Support This Ministry)
 
-**Cantonese Lyric Studio** 是一項由基督徒創作者獨立發起、全心推動**粵語基督教詩歌原創文化**的非牟利事工。
+**Cantonese Lyric Studio** is created by Jacky from **AK Workshop 阿基工作室**，是一項由基督徒創作者獨立發起、全心推動**粵語基督教詩歌原創文化**的非牟利事工。
 
 如果你在填詞、靈修、敬拜隊創作中感受到了這個工具的幫助，歡迎請作者飲杯咖啡！你的每一份支持，都將直接轉化為持續維護伺服器、擴充神學詞庫以及負擔 AI 運算的能量，讓更多弟兄姊妹受惠！
 

@@ -1514,14 +1514,19 @@ export default function CantoneseLyricStudioPage() {
       {/* 頂部導航列：桌面端完整列 + 手機端精簡兩段式（解決圖標過長問題） */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-zinc-200">
         {/* 📱 手機版專屬頂欄 (lg:hidden) */}
-        <div className="flex lg:hidden items-center justify-between px-3 h-13 gap-2 border-b border-zinc-100">
+        <div className="flex lg:hidden items-center justify-between px-3 h-14 gap-2 border-b border-zinc-100">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center shrink-0">
               <Music className="w-3.5 h-3.5" />
             </div>
-            <span className="font-bold text-sm tracking-tight text-zinc-900">
-              Cantonese Lyric
-            </span>
+            <div className="flex flex-col">
+              <span className="font-bold text-sm tracking-tight text-zinc-900 leading-tight">
+                Cantonese Lyric
+              </span>
+              <span className="text-[9px] text-zinc-400 leading-none">
+                by Jacky · AK Workshop
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
@@ -1589,7 +1594,7 @@ export default function CantoneseLyricStudioPage() {
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>2. 填詞畫布 (${projectMetrics.accuracy}%)</span>
+              <span>2. 填詞畫布 ({projectMetrics.accuracy}%)</span>
             </button>
           </div>
         </div>
@@ -1609,13 +1614,18 @@ export default function CantoneseLyricStudioPage() {
               )}
             </button>
 
-            <div className="flex items-center gap-1.5">
-              <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center">
-                <Music className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center shrink-0">
+                <Music className="w-4 h-4" />
               </div>
-              <span className="font-semibold text-sm tracking-tight text-zinc-900">
-                Cantonese Lyric Studio
-              </span>
+              <div className="flex flex-col">
+                <span className="font-semibold text-sm tracking-tight text-zinc-900 leading-tight">
+                  Cantonese Lyric Studio
+                </span>
+                <span className="text-[10px] text-zinc-400 leading-none">
+                  by Jacky · AK Workshop 阿基工作室
+                </span>
+              </div>
             </div>
 
             <div className="h-4 w-px bg-zinc-200 mx-1" />
@@ -1945,17 +1955,20 @@ export default function CantoneseLyricStudioPage() {
               </button>
 
               {/* ☕ 支持事工溫馨提示 */}
-              <div className="pt-1.5 text-center">
+              <div className="pt-2 text-center space-y-1">
                 <a
                   href="https://buymeacoffee.com/akworkshop"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-amber-800 transition group"
+                  className="inline-flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-amber-800 transition group font-medium"
                   title="希望大家支持這個事工！"
                 >
                   <Coffee className="w-3.5 h-3.5 text-amber-600 group-hover:scale-110 transition-transform" />
                   <span>希望大家支持這個事工！☕</span>
                 </a>
+                <p className="text-[10px] text-zinc-400">
+                  This is created by Jacky from AK Workshop 阿基工作室
+                </p>
               </div>
             </div>
           </aside>
@@ -2040,13 +2053,13 @@ export default function CantoneseLyricStudioPage() {
                       : 'border-zinc-200/90 shadow-sm hover:border-zinc-300'
                   }`}
                 >
-                  {/* 行號與多行自適應字詞排版（支援太長自動換行，無需水平滑動） */}
-                  <div className="flex items-start gap-2 sm:gap-4 pb-1">
-                    <div className="w-6 sm:w-7 shrink-0 text-xs font-mono font-semibold text-zinc-400 select-none pt-3 sm:pt-4">
+                  {/* 行號與多行自適應字詞排版（支援太長自動換行，垂直模式舒適寬鬆不擠逼） */}
+                  <div className="flex items-start gap-1.5 sm:gap-4 pb-1">
+                    <div className="w-5 sm:w-7 shrink-0 text-[11px] sm:text-xs font-mono font-semibold text-zinc-400 select-none pt-3 sm:pt-4">
                       {String(lIdx + 1).padStart(2, '0')}
                     </div>
 
-                    <div className="flex items-center gap-2 sm:gap-4 flex-wrap flex-1">
+                    <div className="flex items-center gap-x-1.5 sm:gap-x-3 gap-y-3 sm:gap-y-4 flex-wrap flex-1">
                       {line.groups.map((group, gIdx) => {
                         const isGroupSelected =
                           selectedRef?.lineIdx === lIdx &&
@@ -2059,7 +2072,7 @@ export default function CantoneseLyricStudioPage() {
                         return (
                           <div
                             key={group.groupId}
-                            className={`flex items-center gap-1.5 p-1.5 rounded-xl transition ${
+                            className={`flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-xl transition ${
                               isGroupSelected
                                 ? 'bg-zinc-100/90 ring-1 ring-zinc-300'
                                 : 'hover:bg-zinc-50'
@@ -2080,7 +2093,7 @@ export default function CantoneseLyricStudioPage() {
                                     if (e.key === 'Enter') handleCommitInlineEdit();
                                     if (e.key === 'Escape') setEditingGroupRef(null);
                                   }}
-                                  className="w-32 bg-white border border-zinc-900 rounded-lg px-2.5 py-1.5 text-lg font-semibold text-zinc-900 tracking-widest focus:outline-none"
+                                  className="w-28 sm:w-36 bg-white border border-zinc-900 rounded-lg px-2.5 py-1.5 text-base sm:text-lg font-semibold text-zinc-900 tracking-widest focus:outline-none"
                                 />
                                 <button
                                   onClick={handleCommitInlineEdit}
@@ -2143,17 +2156,21 @@ export default function CantoneseLyricStudioPage() {
                                           .join(''),
                                       })
                                     }
-                                    className={`w-11 h-13 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center transition select-none shrink-0 ${cardStyle} ${
+                                    className={`w-11 h-14 sm:w-12 sm:h-16 py-1 sm:py-1.5 px-0.5 rounded-xl border flex flex-col items-center justify-center transition select-none shrink-0 ${cardStyle} ${
                                       isTokenSelected
                                         ? 'ring-2 ring-zinc-900 shadow-sm -translate-y-0.5'
                                         : ''
                                     }`}
                                   >
-                                    <span className="text-lg font-semibold leading-none">
+                                    <span className="text-base sm:text-lg font-bold leading-tight select-none">
                                       {token.char}
                                     </span>
                                     <span
-                                      className={`text-[11px] font-mono mt-1.5 leading-none ${toneStyle}`}
+                                      className={`font-mono mt-1 sm:mt-1.5 leading-none transition-colors ${
+                                        isToneMatch
+                                          ? 'text-[11px]'
+                                          : 'text-[10px] font-bold tracking-tight'
+                                      } ${toneStyle}`}
                                     >
                                       {isToneMatch
                                         ? token.expectedTone
@@ -2465,6 +2482,39 @@ export default function CantoneseLyricStudioPage() {
               );
             })}
           </div>
+
+          {/* 🕊️ 頁尾版權與事工支持 (Credits & Ministry Support) */}
+          <footer className="mt-14 pt-8 pb-12 border-t border-zinc-200/80 text-center space-y-2.5 max-w-2xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium border border-zinc-200/60">
+              <Music className="w-3.5 h-3.5 text-zinc-800" />
+              <span>Cantonese Lyric Studio · 粵語詩歌作詞工作室</span>
+            </div>
+            <p className="text-xs text-zinc-600 font-medium">
+              This is created by <span className="font-bold text-zinc-900">Jacky</span> from{' '}
+              <a
+                href="https://buymeacoffee.com/akworkshop"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-zinc-900 hover:text-amber-600 underline underline-offset-2 transition"
+              >
+                AK Workshop 阿基工作室
+              </a>
+            </p>
+            <p className="text-[11px] text-zinc-400">
+              以 0243 協音對位法輔助基督教粵語詩歌創作 · 榮耀歸神 (Soli Deo Gloria)
+            </p>
+            <div className="pt-1.5">
+              <a
+                href="https://buymeacoffee.com/akworkshop"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FFDD00] hover:bg-[#FFDD00]/90 text-zinc-950 font-bold text-xs shadow-xs transition hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Coffee className="w-4 h-4 text-zinc-900" />
+                <span>請作者飲杯咖啡 ☕ (Buy me a coffee)</span>
+              </a>
+            </div>
+          </footer>
           </main>
         </div>
       </div>
@@ -3045,7 +3095,7 @@ export default function CantoneseLyricStudioPage() {
             </div>
 
             {/* 支持事工 */}
-            <div className="pt-2 border-t border-zinc-100">
+            <div className="pt-2 border-t border-zinc-100 space-y-2">
               <a
                 href="https://buymeacoffee.com/akworkshop"
                 target="_blank"
@@ -3056,6 +3106,9 @@ export default function CantoneseLyricStudioPage() {
                 <span>請作者飲杯咖啡 ☕ (Buy me a coffee)</span>
                 <ExternalLink className="w-3.5 h-3.5 opacity-70" />
               </a>
+              <p className="text-[10px] text-center text-zinc-400">
+                This is created by Jacky from AK Workshop 阿基工作室
+              </p>
             </div>
           </div>
         </div>
