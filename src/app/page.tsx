@@ -247,6 +247,7 @@ export default function CantoneseLyricStudioPage() {
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'config' | 'editor'>('editor');
   const [showMobileMenuModal, setShowMobileMenuModal] = useState<boolean>(false);
+  const [showDailySupportModal, setShowDailySupportModal] = useState<boolean>(false);
 
   // 📱 手機觸控左右滑動 (Swipe Left / Right) 切換「歌曲與0243譜」與「填詞畫布」
   const touchStartXRef = useRef<number | null>(null);
@@ -448,6 +449,25 @@ export default function CantoneseLyricStudioPage() {
       };
     }
   }, [syncCloudApiKeys]);
+
+  // ☕ 每日首次造訪檢查：每日首次進入頁面時彈出支持事工小對話框 (Buy Me a Coffee)
+  useEffect(() => {
+    try {
+      const now = new Date();
+      const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const lastShownDate = localStorage.getItem('cls_daily_support_date');
+      if (lastShownDate !== todayKey) {
+        // 延遲 1.8 秒以等頁面佈局與資料載入完成後優雅浮現，體驗更加舒適自然
+        const timer = setTimeout(() => {
+          setShowDailySupportModal(true);
+          try {
+            localStorage.setItem('cls_daily_support_date', todayKey);
+          } catch {}
+        }, 1800);
+        return () => clearTimeout(timer);
+      }
+    } catch {}
+  }, []);
 
   // 登入 / 註冊 提交處理
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -2560,6 +2580,71 @@ export default function CantoneseLyricStudioPage() {
 
             <div className="text-[11px] text-zinc-400">
               AI 填詞完成後將自動填入畫布
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ☕ 每日首次造訪支持事工小對話框 (Daily Support Ministry Dialog) */}
+      {showDailySupportModal && (
+        <div
+          onClick={() => setShowDailySupportModal(false)}
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200/90 text-center space-y-4 animate-in zoom-in-95 duration-200 relative"
+          >
+            <button
+              onClick={() => setShowDailySupportModal(false)}
+              className="absolute top-3.5 right-3.5 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition"
+              title="關閉"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shadow-inner">
+              <Coffee className="w-6 h-6 text-amber-600" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-zinc-900 flex items-center justify-center gap-1.5">
+                <span>支持粵語詩歌創作事工</span>
+                <span className="text-amber-500">☕</span>
+              </h3>
+              <p className="text-[11px] text-zinc-400 font-medium">
+                This is created by Jacky from AK Workshop 阿基工作室
+              </p>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 text-left text-xs text-amber-950 leading-relaxed space-y-1.5">
+              <p className="font-semibold text-amber-900">
+                願神使用這個工具祝福你的詩歌創作！🕊️
+              </p>
+              <p className="text-[11px] text-zinc-600 leading-normal">
+                Cantonese Lyric Studio 是一項非牟利獨立事工。如果你在創作中得到幫助，誠意邀請你請作者飲杯咖啡，支持事工持續營運與 AI 運算費用，讓更多弟兄姊妹受惠！
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <a
+                href="https://buymeacoffee.com/akworkshop"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setShowDailySupportModal(false)}
+                className="w-full py-2.5 px-3 rounded-xl bg-[#FFDD00] hover:bg-[#FFDD00]/90 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition hover:scale-[1.01] active:scale-[0.99]"
+              >
+                <Coffee className="w-4 h-4" />
+                <span>請作者飲杯咖啡 ☕ (Buy me a coffee)</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+              </a>
+
+              <button
+                onClick={() => setShowDailySupportModal(false)}
+                className="w-full py-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition"
+              >
+                稍後再說（今日不再提醒）
+              </button>
             </div>
           </div>
         </div>
