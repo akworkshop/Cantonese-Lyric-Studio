@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     const themeContext = `${title} ${meaning}`.trim();
-    const lexiconHint = buildDynamicLexiconPrompt(rawLines, title, meaning);
+    const lexiconHint = buildDynamicLexiconPrompt(rawLines, title, meaning, perspective);
 
     const perspectiveGuidelines: Record<SongPerspective, { title: string; desc: string }> = {
       devotional: {
@@ -61,15 +61,15 @@ export async function POST(req: NextRequest) {
       },
       congregational: {
         title: '全體宣告（我們向主 / 會眾敬拜）',
-        desc: '代名詞以「我們」與「主／神」為主，強調教會全體聖徒同心合一、齊聲宣揚主恩與全地屈膝敬拜的宏大力量。',
+        desc: '【會眾全體宣告視角 - 絕對禁令】：❌ 嚴格禁止使用任何單數私禱稱謂（如「我」、「我心」、「我身」、「牽我手」等）！全曲每一行都必須站在「全體會眾／我們／萬民／全地」的集體敬拜視角，使用「我們」、「同心」、「齊聲」、「萬民」、「普世」、「眾心」！',
       },
       narrative: {
         title: '福音敘事（祂的作為 / 救恩見證）',
-        desc: '代名詞以「祂」、「基督」、「耶穌」、「救主」為主，重點在客觀見證神在十架與歷史中的奇妙作為、拯救大能與復活盼望。',
+        desc: '【福音敘事視角 - 絕對禁令】：❌ 嚴格禁止私禱式的「我心愛祢」！全曲必須以客觀福音歷史視角見證「祂的作為、十架、基督、耶穌、救恩、天地、創造」！',
       },
       exhortation: {
         title: '彼此勸勉（奔跑天路 / 差遣激勵）',
-        desc: '代名詞以「你 / 我們」為主（如呼喚聖徒「你當剛強壯膽」、「我們要跑盡路程」），強調肢體互相激勵、承接宣教使命、迎戰風浪的堅定心志。',
+        desc: '【彼此勸勉視角 - 絕對禁令】：❌ 嚴格禁止內向自憐的私禱！全曲以向聖徒弟兄姊妹說話「你當剛強」、「我們奔跑」、「同心站立」、「莫怕風浪」！',
       },
     };
     const activePerspective =
@@ -78,9 +78,23 @@ export async function POST(req: NextRequest) {
     // 整理每一行的結構與已鎖定 (🟢 locked) 的字詞約束
     const lineSpecs = parsedPatternLines.map((pLine, lIdx) => {
       const linePat = pLine.pattern;
-      const section = pLine.section;
+      const section = pLine.section || '';
       const groupPatterns = linePat.split(' ').filter(Boolean);
       const existingLine = existingLines[lIdx];
+
+      // 根據段落功能（Verse 主歌 vs Chorus 副歌 vs Bridge 橋段）給予鮮明且對比強烈的寫作指引
+      let sectionGuidance = '';
+      const isVerse = /verse|主歌/i.test(section) || (!section && lIdx < Math.ceil(parsedPatternLines.length / 2));
+      const isChorus = /chorus|副歌/i.test(section);
+      const isBridge = /bridge|橋段/i.test(section);
+
+      if (isVerse) {
+        sectionGuidance = '【本行任務：Verse 主歌敘事鋪陳】嚴禁一開頭就大喊副歌式的讚美口號（嚴禁寫「向祢敬拜、大能掌權、權柄大地」）！必須從具體生活處境、受造宇宙浩瀚、黑夜風浪或世人奔波尋求的真實場景切入鋪陳！';
+      } else if (isChorus) {
+        sectionGuidance = `【本行任務：Chorus 副歌情感高潮】全曲情感最高峰！用最響亮洗練、全體齊聲宣揚的字句，強烈呼應歌名《${title}》與主題的核心大宣告！`;
+      } else if (isBridge) {
+        sectionGuidance = '【本行任務：Bridge 橋段轉折深化】推動信心轉折與決定性的立志跨越（如走出幽谷、十架光芒、定意跟隨）！';
+      }
 
       const groupConstraintDescriptions = groupPatterns.map((gPat, gIdx) => {
         const existingGroup = existingLine?.groups?.[gIdx];
@@ -106,7 +120,7 @@ export async function POST(req: NextRequest) {
         lineIndex: lIdx,
         targetPattern: linePat,
         groupPatterns,
-        constraintText: `第 ${lIdx + 1} 行 ${section ? `【${section}】` : ''}(${linePat})：${groupConstraintDescriptions.join(' ＋ ')}`,
+        constraintText: `第 ${lIdx + 1} 行 ${section ? `【${section}】` : ''}(${linePat})：${groupConstraintDescriptions.join(' ＋ ')}${sectionGuidance ? `\n    👉 ${sectionGuidance}` : ''}`,
       };
     });
 
@@ -116,12 +130,23 @@ export async function POST(req: NextRequest) {
 ### 👤 本曲指定人稱視角與口吻：【${activePerspective.title}】
 - ${activePerspective.desc}
 
-### 🎼 歌曲段落結構與功能指引（若數字譜中標有【Verse / Chorus / Bridge】）：
-- **【Verse 主歌（鋪陳敘事）】**：描寫具體生活處境、黑夜風浪、內心掙扎與渴慕，語言真摯深沉，做好鋪陳。
-- **【Chorus 副歌（情感高潮與核心宣告）】**：全曲情感最高峰！用最洗練、最琅琅上口且充滿信心的字句，強烈呼應歌名《${title}》與核心主旨。
+### 🎼 歌曲段落結構與功能指引（主歌與副歌必須有巨大的修辭與畫面反差！）：
+- **【Verse 主歌（鋪陳敘事與具體場景）】**：
+  - **必須由「具體情境、自然畫面、受造宇宙、世人處境、黑夜呼求」切入**！
+  - **❌ 主歌第一行絕對嚴禁直接大喊副歌口號（嚴禁一開頭就「向祢敬拜、權柄大地、掌管世界」）！**
+  - 例如主題是「創造萬物、掌管所有的主，是我們力量泉源」：
+    - 主歌第一段必須寫**諸天穹蒼之浩瀚、世人奔波之疲乏軟弱、受造界對造物主的仰望**！
+- **【Chorus 副歌（情感最高峰與齊聲宣告）】**：
+  - 只有在進入【Chorus】時，才全面引爆核心歌名《${title}》與集體大宣告（如「萬民屈膝高唱、掌管萬有、至高榮耀」）！
+  - 副歌必須洗練、琅琅上口、充滿信心的爆發力！
 - **【Bridge 橋段（轉折深化與信心跨越）】**：推動視角轉向（如跨過約旦、走出幽谷、十架光芒），帶來生命更新與決定性的立志回應。
 
 ### 核心大師級填詞鐵律（違者視為嚴重失敗）：
+
+0. **【最高鐵律：嚴禁照抄範例詞彙 & 拒絕千篇一律的空泛套話】**：
+   - 提示中的 0243 詞組僅作為「聲調音階結構參考範例」，**嚴格禁止直接把提示詞逐個照搬拼裝成句！**
+   - 每一首詩歌必須根據用戶輸入的【歌曲名稱】與【歌曲含意／想表達的故事】構思專屬的意境與文字！
+   - 若用戶寫的是「創造天地萬物，掌管所有的主，是我們力量的泉源」，主歌必須生動描繪宇宙穹蒼、受造萬象、世人渺小尋求，**絕不可退化成千篇一律的「我心愛祢、向祢敬拜」**！
 
 1. **【最高鐵律：嚴禁文法倒錯、拼湊怪句、尾部強塞贅字與腰斬專有名詞（絕不夾硬放字）】**：
    - **零容忍夾硬砌字與尾部強行墊字**：
@@ -194,18 +219,19 @@ ${lexiconHint}
 
     const userPrompt = `【歌曲名稱】：${title}
 【歌曲含意／想表達的故事（核心靈魂，每句歌詞必須緊扣此主題！）】：${meaning}
+【指定人稱視角（嚴格遵守，違者無效）】：${activePerspective.title}（${activePerspective.desc}）
 
-【各行 0243 數字譜與分組要求】：
+【各行 0243 數字譜與段落分工要求】：
 ${lineSpecs.map((s) => s.constraintText).join('\n')}
 
-請務必緊扣「${title} — ${meaning}」的故事與神學核心來造句（優先運用上方【🎯 本曲主題與故事專屬 0243 協音核心詞彙】中的字詞），嚴格按照每行每組的字數與 0243 聲調選字，回傳 JSON。`;
+請務必緊扣「${title} — ${meaning}」的故事核心來構思全新的原創詩句，嚴格遵守人稱視角（若是會眾宣告模式，嚴禁使用單數「我」；主歌必須鋪陳描寫場景，副歌才齊聲宣告高潮），嚴格按照每行每組的字數與 0243 聲調選字，回傳 JSON。`;
 
-    // 執行第一輪 LLM 生成
+    // 執行第一輪 LLM 生成（提高溫度至 0.65，避免千篇一律的套話，激發文學多樣性）
     const firstPass = await callLLMJson<LLMGenerateResponse>(
       aiConfig,
       systemPrompt,
       userPrompt,
-      0.45
+      0.65
     );
 
     const currentGroupTexts: string[][] = lineSpecs.map((spec, lIdx) => {
@@ -423,12 +449,22 @@ ${
     if (currentEval.errorDetails.length > 0) {
       currentEval.errorDetails.forEach((err) => {
         const { lineIdx, groupIdx, targetPattern } = err;
-        const verifiedCandidates = getVerifiedCandidatesForGroupPattern(
+        let verifiedCandidates = getVerifiedCandidatesForGroupPattern(
           targetPattern,
-          20,
-          false,
+          24,
+          true,
           themeContext
         );
+
+        if (perspective === 'congregational') {
+          const privates = ['我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕'];
+          const filtered = verifiedCandidates.filter((c) => !privates.some((p) => c.includes(p)));
+          if (filtered.length > 0) verifiedCandidates = filtered;
+        } else if (perspective === 'narrative') {
+          const filtered = verifiedCandidates.filter((c) => !['我愛祢', '我深愛', '我渴慕', '牽我手'].some((p) => c.includes(p)));
+          if (filtered.length > 0) verifiedCandidates = filtered;
+        }
+
         if (verifiedCandidates.length > 0) {
           const existingGroup = existingLines[lineIdx]?.groups?.[groupIdx];
           // 若有已鎖定的字 (🟢 locked)，優先篩選符合鎖定字之候選詞

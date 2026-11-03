@@ -1542,7 +1542,8 @@ export function extractThemeVocabularyHints(title = '', meaning = ''): {
 export function buildDynamicLexiconPrompt(
   patterns: string[],
   title = '',
-  meaning = ''
+  meaning = '',
+  perspective = 'devotional'
 ): string {
   const themeText = `${title} ${meaning}`.trim();
   const uniqueGroupPatterns = new Set<string>();
@@ -1574,12 +1575,24 @@ export function buildDynamicLexiconPrompt(
   lines.push(`- 數字 4（次高音，含「我、你、祢」、「更(更深/更愛/更加)」、怕、困、勝、愛、信、靠、向、敬、拜、讚、盼、賜、照）：${VERIFIED_CANTONESE_WORSHIP_CHARS['4'].join('、')}`);
   lines.push(`- 數字 3（最高音，含「更(更新/更改)」、掌、驚、境、主、祂、心、恩、深、真、光、歌、手、穩）：${VERIFIED_CANTONESE_WORSHIP_CHARS['3'].join('、')}`);
 
+  // 針對人稱視角（Perspective）過濾與強化範例，避免會眾宣告歌曲出現私禱「我心愛祢」
+  const privatePronouns = ['我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕', '懂我心'];
+
   const groupHints: string[] = [];
   uniqueGroupPatterns.forEach((gp) => {
-    const verifiedExamples = getVerifiedCandidatesForGroupPattern(gp, 12, false, themeText);
+    let verifiedExamples = getVerifiedCandidatesForGroupPattern(gp, 16, true, themeText);
+    if (perspective === 'congregational') {
+      // 會眾宣告模式：排除單數私禱稱謂，優先保留會眾、宇宙創造與集體宣告詞
+      verifiedExamples = verifiedExamples.filter((ex) => !privatePronouns.some((p) => ex.includes(p)));
+    } else if (perspective === 'narrative') {
+      // 福音敘事模式：排除私禱「我愛祢/我渴慕」，保留祂的作為、十架、基督
+      verifiedExamples = verifiedExamples.filter((ex) => !['我愛祢', '我深愛', '我渴慕', '牽我手'].some((p) => ex.includes(p)));
+    } else if (perspective === 'exhortation') {
+      verifiedExamples = verifiedExamples.filter((ex) => !['牽我手', '撫我心', '懂我心'].some((p) => ex.includes(p)));
+    }
     if (verifiedExamples.length > 0) {
       groupHints.push(
-        `  * 區塊 [${gp}]（${gp.length}字）100%啱音積木推薦（強烈建議優先調用或作為基底，將故事意境自然融入；若自創新詞必須嚴格符合各字聲調）：${verifiedExamples.join('、')}`
+        `  * 區塊 [${gp}] 協音結構範例（⚠️僅供 0243 聲調結構靈感參考，嚴禁機械照抄！必須緊扣歌詞情境與視角自主創作）：${verifiedExamples.slice(0, 10).join('、')}`
       );
     }
   });
@@ -1592,7 +1605,7 @@ export function buildDynamicLexiconPrompt(
   lines.push('  • 表達「親近深情渴慕」：4430 ➔「我渴慕祢」；2432 ➔「靜候主前」；3324 ➔「清心仰盼」；4420 ➔「切切尋求」。');
 
   if (groupHints.length > 0) {
-    lines.push('\n【各數字譜區塊之 100% 啱音短語結構參考】：');
+    lines.push('\n【各數字譜區塊之 0243 協音參考（僅供聲調參考，切勿機械照抄）】：');
     lines.push(...groupHints);
   }
 
