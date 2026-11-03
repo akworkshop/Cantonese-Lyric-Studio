@@ -29,15 +29,23 @@ export interface LyricWordGroup {
   userInstruction?: string;   // 用戶針對此詞組的特定修改指令
 }
 
+export type SongPerspective =
+  | 'devotional' // 我向祢（親密傾訴，以「我 / 祢」為主）
+  | 'congregational' // 我們向主（會眾敬拜讚美，以「我們 / 主 / 神」為主）
+  | 'narrative' // 祂的作為（福音敘事見證，以「祂 / 耶穌 / 救主」為主）
+  | 'exhortation'; // 彼此勸勉（信徒激勵奔跑，以「你 / 我們」為主，如約書亞剛強壯膽）
+
 export interface LyricLine {
   lineId: string;
   targetPattern: string;      // 例如 "2444 433"
   groups: LyricWordGroup[];
+  section?: string;           // 段落標籤，例如 "Verse 1", "Chorus", "Bridge"
 }
 
 export interface SongProject {
   title: string;
   meaning: string;
+  perspective?: SongPerspective;
   lines: LyricLine[];
 }
 

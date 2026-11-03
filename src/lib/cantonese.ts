@@ -471,16 +471,63 @@ export function normalizeTonePatternLine(rawLine: string): string {
     .trim();
 }
 
+export interface ParsedPatternLine {
+  pattern: string;
+  section?: string;
+}
+
+/**
+ * 解析包含段落標籤（如 [Verse 1], [Chorus], [Bridge], [主歌], [副歌] 等）的 0243 數字譜文字
+ */
+export function parsePatternTextWithSections(patternText: string): ParsedPatternLine[] {
+  const lines = patternText.split(/\r?\n/);
+  const result: ParsedPatternLine[] = [];
+  let currentSection: string | undefined = undefined;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // 檢查是否為段落標籤行，例如 [Verse 1], [Chorus], [Bridge], [主歌], [副歌], Verse 1:, 副歌 等
+    const bracketMatch = trimmed.match(/^\[(.*?)\]$/);
+    const textMatch = trimmed.match(/^(Verse\s*\d*|Chorus\s*\d*|Bridge\s*\d*|Intro|Outro|Pre-Chorus|主歌\s*\d*|副歌\s*\d*|橋段\s*\d*|前奏|尾奏|導歌)[:：]?$/i);
+
+    if (bracketMatch) {
+      currentSection = bracketMatch[1].trim();
+      continue;
+    } else if (textMatch) {
+      currentSection = textMatch[0].replace(/[:：]$/, '').trim();
+      continue;
+    }
+
+    const cleanPattern = normalizeTonePatternLine(trimmed);
+    if (cleanPattern) {
+      result.push({
+        pattern: cleanPattern,
+        section: currentSection,
+      });
+    }
+  }
+
+  return result;
+}
+
 /**
  * 將多行 0243 數字譜與對應歌詞文字結合，建構結構化的 LyricLine[]
  */
 export function buildLyricLinesFromPatternsAndTexts(
-  patternLines: string[],
+  patternLines: (string | ParsedPatternLine)[],
   lyricTexts?: string[][],
-  existingLines?: LyricLine[]
+  existingLines?: LyricLine[],
+  lineSections?: (string | undefined)[]
 ): LyricLine[] {
   return patternLines
-    .map((rawPattern, lineIdx) => {
+    .map((rawItem, lineIdx) => {
+      const rawPattern = typeof rawItem === 'string' ? rawItem : rawItem.pattern;
+      const inheritedSection =
+        (typeof rawItem === 'object' ? rawItem.section : undefined) ||
+        lineSections?.[lineIdx] ||
+        existingLines?.[lineIdx]?.section;
       const cleanPattern = normalizeTonePatternLine(rawPattern);
       if (!cleanPattern) return null;
 
@@ -581,11 +628,13 @@ export function buildLyricLinesFromPatternsAndTexts(
         };
       });
 
-      return {
-        lineId: `L${lineIdx}`,
+      const lyricLine: LyricLine = {
+        lineId: existingLine?.lineId || `L${lineIdx}`,
         targetPattern: cleanPattern,
         groups,
+        ...(inheritedSection ? { section: inheritedSection } : {}),
       };
+      return lyricLine;
     })
     .filter((line): line is LyricLine => line !== null);
 }

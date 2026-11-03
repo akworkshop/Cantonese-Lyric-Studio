@@ -38,6 +38,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import {
+  SongPerspective,
   AIProviderConfig,
   AIProviderType,
   AlternativeCandidate,
@@ -51,6 +52,7 @@ import {
   getCandidatesWithLockedConstraints,
   getVerifiedCandidatesForGroupPattern,
   normalizeTonePatternLine,
+  parsePatternTextWithSections,
   verifyPhraseAgainstPattern,
 } from '@/lib/cantonese';
 import { DEFAULT_MODELS } from '@/lib/ai-providers';
@@ -80,6 +82,7 @@ interface PresetSong {
   title: string;
   meaning: string;
   patternText: string;
+  perspective?: SongPerspective;
   sampleTexts: string[][];
 }
 
@@ -87,6 +90,7 @@ interface SavedProject {
   id: string;
   title: string;
   meaning: string;
+  perspective?: SongPerspective;
   patternText: string;
   lines: LyricLine[];
   updatedAt: string;
@@ -99,7 +103,8 @@ const PRESET_SONGS: PresetSong[] = [
     title: '主我深愛祢',
     meaning:
       '以「我」向「祢（主）」傾訴的親密對話詩歌：感謝祢先愛我、牽我手走過風浪，我願一生深愛祢、敬拜祢。',
-    patternText: `4344 4343 3344\n4444 0422 2400\n4344 433 0233`,
+    patternText: `[Verse]\n4344 4343 3344\n4444 0422 2400\n\n[Chorus]\n4344 433 0233`,
+    perspective: 'devotional',
     sampleTexts: [
       ['我深愛祢', '祢牽我手', '一生愛祢'],
       ['我敬拜祢', '求祢引導', '伴我同行'],
@@ -112,7 +117,8 @@ const PRESET_SONGS: PresetSong[] = [
     title: '在祢懷裡得安息',
     meaning:
       '在疲乏與風浪中回到天父懷裡，經歷祢溫柔的安慰與看顧，我心全然信靠祢。',
-    patternText: `2402 433\n0444 444\n4344 423\n3344 443`,
+    patternText: `[Verse]\n2402 433\n0444 444\n\n[Chorus]\n4344 423\n3344 443`,
+    perspective: 'devotional',
     sampleTexts: [
       ['在祢懷裡', '我安息'],
       ['求祢看顧', '我信祢'],
@@ -125,7 +131,8 @@ const PRESET_SONGS: PresetSong[] = [
     name: '範本三：含「唔啱音」測試修訂',
     title: '主愛照亮我心',
     meaning: '此範例第一句刻意放入「全心（03）」對位「43」，示範黃燈自動偵測與就地換詞。',
-    patternText: `4344 433 3344\n0242 423 4444`,
+    patternText: `[Chorus]\n4344 433 3344\n0242 423 4444`,
+    perspective: 'congregational',
     sampleTexts: [
       ['全心愛祢', '唱新歌', '一生愛祢'], // "全" 實為 0，目標 4 -> 自動標示黃色！
       ['同在讚美', '盼望主', '我敬拜祢'],
@@ -142,6 +149,7 @@ export default function CantoneseLyricStudioPage() {
   const [currentProjectId, setCurrentProjectId] = useState<string>('proj-default');
   const [title, setTitle] = useState<string>(PRESET_SONGS[0].title);
   const [meaning, setMeaning] = useState<string>(PRESET_SONGS[0].meaning);
+  const [perspective, setPerspective] = useState<SongPerspective>(PRESET_SONGS[0].perspective || 'devotional');
   const [patternText, setPatternText] = useState<string>(PRESET_SONGS[0].patternText);
   const [lines, setLines] = useState<LyricLine[]>([]);
 
@@ -370,8 +378,9 @@ export default function CantoneseLyricStudioPage() {
       setSidebarOpen(false);
     }
 
+    const parsedInitial = parsePatternTextWithSections(PRESET_SONGS[0].patternText);
     const initialLines = buildLyricLinesFromPatternsAndTexts(
-      PRESET_SONGS[0].patternText.split('\n'),
+      parsedInitial,
       PRESET_SONGS[0].sampleTexts
     );
     setLines(initialLines);
@@ -641,7 +650,7 @@ export default function CantoneseLyricStudioPage() {
         showToast(`已儲存專案「${proj.title}」至本機（登入可啟用跨裝置雲端同步）`);
       }
     },
-    [currentProjectId, title, meaning, patternText, lines, currentUser, showToast]
+    [currentProjectId, title, meaning, perspective, patternText, lines, currentUser, showToast]
   );
 
   // 建立新專案 (New Project)
@@ -651,12 +660,9 @@ export default function CantoneseLyricStudioPage() {
     const cleanMeaning =
       newProjForm.meaning.trim() ||
       '以「我」與「祢（主）」對話，表達對主恩典的感謝與信靠。';
-    const cleanPattern = newProjForm.patternText.trim() || '2342 433\n2442 0222';
-
-    const rawPatternLines = cleanPattern
-      .split(/\r?\n/)
-      .map((l) => normalizeTonePatternLine(l))
-      .filter(Boolean);
+    const cleanPattern = newProjForm.patternText.trim() || '[Verse]\n2342 433\n\n[Chorus]\n2442 0222';
+    const parsedPatternLines = parsePatternTextWithSections(cleanPattern);
+    const rawPatternLines = parsedPatternLines.map((p) => p.pattern);
 
     const usedWords = new Set<string>();
     const initialTexts: string[][] | undefined = autoGenerateLexicon
@@ -674,7 +680,7 @@ export default function CantoneseLyricStudioPage() {
       : undefined;
 
     const builtLines = buildLyricLinesFromPatternsAndTexts(
-      rawPatternLines,
+      parsedPatternLines,
       initialTexts
     );
 
@@ -707,6 +713,7 @@ export default function CantoneseLyricStudioPage() {
     setCurrentProjectId(proj.id);
     setTitle(proj.title);
     setMeaning(proj.meaning);
+    if (proj.perspective) setPerspective(proj.perspective);
     setPatternText(proj.patternText);
     setLines(proj.lines);
     setHistory([proj.lines]);
@@ -1065,10 +1072,8 @@ export default function CantoneseLyricStudioPage() {
   // 離線本地詞庫秒速生成（加入反單調過濾，平衡自然意象與「我／祢」）
   const handleLocalLexiconGenerate = () => {
     setErrorBanner(null);
-    const rawPatternLines = patternText
-      .split(/\r?\n/)
-      .map((l) => normalizeTonePatternLine(l))
-      .filter(Boolean);
+    const parsedPatternLines = parsePatternTextWithSections(patternText);
+    const rawPatternLines = parsedPatternLines.map((p) => p.pattern);
 
     if (rawPatternLines.length === 0) {
       setErrorBanner('請至少輸入一行 0243 數字譜（如：2342 433）');
@@ -1126,7 +1131,7 @@ export default function CantoneseLyricStudioPage() {
     });
 
     const newLines = buildLyricLinesFromPatternsAndTexts(
-      rawPatternLines,
+      parsedPatternLines,
       generatedTexts,
       lines
     );
@@ -1154,6 +1159,7 @@ export default function CantoneseLyricStudioPage() {
           meaning,
           patternText,
           existingLines: lines,
+          perspective,
           aiConfig,
         }),
       });
@@ -1844,7 +1850,7 @@ export default function CantoneseLyricStudioPage() {
             {/* 主題 */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-zinc-700">
-                主題／想表達的故事（建議寫入「我」與「祢」）
+                主題／想表達的故事
               </label>
               <textarea
                 rows={3}
@@ -1855,23 +1861,59 @@ export default function CantoneseLyricStudioPage() {
               />
             </div>
 
-            {/* 0243 數字譜 */}
+            {/* 👤 人稱視角（口吻統一） */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-zinc-700">人稱視角（口吻統整）</label>
+                <span className="text-[10px] text-zinc-400">引導 AI 稱謂</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { key: 'devotional', label: '我向祢 · 親密傾訴', desc: '以「我 / 祢」為主' },
+                  { key: 'congregational', label: '我們向主 · 全體宣告', desc: '以「我們 / 祂」為主' },
+                  { key: 'narrative', label: '祂的作為 · 福音見證', desc: '以「祂 / 基督」為主' },
+                  { key: 'exhortation', label: '彼此勸勉 · 差遣互勉', desc: '以「你 / 我們」為主' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setPerspective(item.key as SongPerspective)}
+                    className={`p-2 rounded-lg border text-left transition ${
+                      perspective === item.key
+                        ? 'bg-zinc-900 border-zinc-900 text-white font-medium shadow-xs'
+                        : 'bg-zinc-50 hover:bg-zinc-100 border-zinc-200 text-zinc-700'
+                    }`}
+                  >
+                    <div className="text-[11px] font-semibold truncate leading-tight">
+                      {item.label}
+                    </div>
+                    <div className={`text-[9px] mt-0.5 truncate ${
+                      perspective === item.key ? 'text-zinc-300' : 'text-zinc-400'
+                    }`}>
+                      {item.desc}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 0243 數字譜與段落標籤 */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-zinc-700">
-                  0243 數字譜
+                  0243 數字譜與段落
                 </label>
-                <span className="text-[11px] text-zinc-400">空格＝呼吸斷詞</span>
+                <span className="text-[11px] text-zinc-400">支援 [Verse] / [Chorus]</span>
               </div>
               <textarea
                 rows={6}
                 value={patternText}
                 onChange={(e) => setPatternText(e.target.value)}
-                placeholder={`4344 4343 3344\n4444 0422 2400`}
+                placeholder={`[Verse]\n4344 4343 3344\n4444 0422 2400\n\n[Chorus]\n4344 433 0233`}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2.5 text-sm font-mono tracking-wider text-zinc-900 focus:bg-white focus:outline-none focus:border-zinc-900 transition leading-relaxed"
               />
               <p className="text-[11px] text-zinc-400">
-                💡 小貼士：「我、你、祢」皆為 <strong className="text-zinc-700">4</strong> 聲（如 <code className="text-zinc-700">4344</code> = 我深愛祢）。
+                💡 支援段落標籤如 <code className="text-zinc-700">[Verse 1]</code>、<code className="text-zinc-700">[Chorus]</code>、<code className="text-zinc-700">[Bridge]</code>，AI 會自動在副歌昇華情感！
               </p>
             </div>
 
@@ -1976,9 +2018,21 @@ export default function CantoneseLyricStudioPage() {
                   ? activeGroup.tokens[selectedRef.tokenIdx]
                   : null;
 
+              const isFirstLineOfSection =
+                Boolean(line.section && (lIdx === 0 || lines[lIdx - 1]?.section !== line.section));
+
               return (
+                <React.Fragment key={line.lineId}>
+                  {isFirstLineOfSection && (
+                    <div className="flex items-center gap-2.5 pt-3 pb-1">
+                      <span className="px-3 py-1 rounded-lg text-xs font-bold tracking-wider uppercase bg-zinc-900 text-white shadow-xs flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        {line.section}
+                      </span>
+                      <div className="h-px bg-zinc-200 flex-1" />
+                    </div>
+                  )}
                 <div
-                  key={line.lineId}
                   onClick={(e) => e.stopPropagation()}
                   className={`bg-white rounded-2xl border transition p-3.5 sm:p-5 ${
                     isLineActive
@@ -2407,6 +2461,7 @@ export default function CantoneseLyricStudioPage() {
                     </div>
                   )}
                 </div>
+                </React.Fragment>
               );
             })}
           </div>

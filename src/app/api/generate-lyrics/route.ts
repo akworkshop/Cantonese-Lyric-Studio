@@ -4,11 +4,13 @@ import {
   buildLyricLinesFromPatternsAndTexts,
   getVerifiedCandidatesForGroupPattern,
   normalizeTonePatternLine,
+  parsePatternTextWithSections,
+  ParsedPatternLine,
   VERIFIED_CANTONESE_WORSHIP_CHARS,
   verifyPhraseAgainstPattern,
 } from '@/lib/cantonese';
 import { callLLMJson } from '@/lib/ai-providers';
-import { AIProviderConfig, LyricLine } from '@/types/lyric';
+import { AIProviderConfig, LyricLine, SongPerspective } from '@/types/lyric';
 
 interface LLMGenerateResponse {
   lines: {
@@ -28,19 +30,19 @@ export async function POST(req: NextRequest) {
       meaning = '敬拜讚美主恩',
       patternText = '',
       existingLines = [] as LyricLine[],
+      perspective = 'devotional',
       aiConfig,
     }: {
       title: string;
       meaning: string;
       patternText: string;
       existingLines?: LyricLine[];
+      perspective?: SongPerspective;
       aiConfig: AIProviderConfig;
     } = body;
 
-    const rawLines = patternText
-      .split(/\r?\n/)
-      .map((l: string) => normalizeTonePatternLine(l))
-      .filter(Boolean);
+    const parsedPatternLines = parsePatternTextWithSections(patternText);
+    const rawLines = parsedPatternLines.map((p) => p.pattern);
 
     if (rawLines.length === 0) {
       return NextResponse.json(
@@ -52,8 +54,31 @@ export async function POST(req: NextRequest) {
     const themeContext = `${title} ${meaning}`.trim();
     const lexiconHint = buildDynamicLexiconPrompt(rawLines, title, meaning);
 
+    const perspectiveGuidelines: Record<SongPerspective, { title: string; desc: string }> = {
+      devotional: {
+        title: '親密傾訴（我向祢 / 私禱）',
+        desc: '代名詞嚴格以「我」與「祢」為主，展現個人在密室中向神的深情傾訴、靈修默想、渴慕與甘心奉獻。口吻溫柔真摯，全曲切勿突兀切換成「我們」或「他們」。',
+      },
+      congregational: {
+        title: '全體宣告（我們向主 / 會眾敬拜）',
+        desc: '代名詞以「我們」與「主／神」為主，強調教會全體聖徒同心合一、齊聲宣揚主恩與全地屈膝敬拜的宏大力量。',
+      },
+      narrative: {
+        title: '福音敘事（祂的作為 / 救恩見證）',
+        desc: '代名詞以「祂」、「基督」、「耶穌」、「救主」為主，重點在客觀見證神在十架與歷史中的奇妙作為、拯救大能與復活盼望。',
+      },
+      exhortation: {
+        title: '彼此勸勉（奔跑天路 / 差遣激勵）',
+        desc: '代名詞以「你 / 我們」為主（如呼喚聖徒「你當剛強壯膽」、「我們要跑盡路程」），強調肢體互相激勵、承接宣教使命、迎戰風浪的堅定心志。',
+      },
+    };
+    const activePerspective =
+      perspectiveGuidelines[perspective as SongPerspective] || perspectiveGuidelines.devotional;
+
     // 整理每一行的結構與已鎖定 (🟢 locked) 的字詞約束
-    const lineSpecs = rawLines.map((linePat, lIdx) => {
+    const lineSpecs = parsedPatternLines.map((pLine, lIdx) => {
+      const linePat = pLine.pattern;
+      const section = pLine.section;
       const groupPatterns = linePat.split(' ').filter(Boolean);
       const existingLine = existingLines[lIdx];
 
@@ -81,22 +106,34 @@ export async function POST(req: NextRequest) {
         lineIndex: lIdx,
         targetPattern: linePat,
         groupPatterns,
-        constraintText: `第 ${lIdx + 1} 行 (${linePat})：${groupConstraintDescriptions.join(' ＋ ')}`,
+        constraintText: `第 ${lIdx + 1} 行 ${section ? `【${section}】` : ''}(${linePat})：${groupConstraintDescriptions.join(' ＋ ')}`,
       };
     });
 
     const systemPrompt = `你是一位精通「0243 粵語協音對位法」與現代粵語敬拜詩歌（如玻璃海、同心圓、ACM、CantonHymn 風格）的大師級填詞人。
 你的任務是根據用戶提供的「歌曲名稱」、「歌曲含意／想表達的故事」及「0243 數字譜」，創作出**100% 文法自然、絕不夾硬砌字、緊扣故事精髓、詞彙豐富且 100% 啱音**的詩歌歌詞。
 
+### 👤 本曲指定人稱視角與口吻：【${activePerspective.title}】
+- ${activePerspective.desc}
+
+### 🎼 歌曲段落結構與功能指引（若數字譜中標有【Verse / Chorus / Bridge】）：
+- **【Verse 主歌（鋪陳敘事）】**：描寫具體生活處境、黑夜風浪、內心掙扎與渴慕，語言真摯深沉，做好鋪陳。
+- **【Chorus 副歌（情感高潮與核心宣告）】**：全曲情感最高峰！用最洗練、最琅琅上口且充滿信心的字句，強烈呼應歌名《${title}》與核心主旨。
+- **【Bridge 橋段（轉折深化與信心跨越）】**：推動視角轉向（如跨過約旦、走出幽谷、十架光芒），帶來生命更新與決定性的立志回應。
+
 ### 核心大師級填詞鐵律（違者視為嚴重失敗）：
 
-1. **【最高鐵律：嚴禁文法倒錯、拼湊怪句與腰斬專有名詞（絕不夾硬放字）】**：
-   - **零容忍夾硬砌字**：絕對不可為了滿足 0243 數字譜而拼湊出日常廣東話不會講的怪詞怪句！每一句歌詞必須語法自然流暢、一聽就懂、有真實的情感與呼吸節奏。
+1. **【最高鐵律：嚴禁文法倒錯、拼湊怪句、尾部強塞贅字與腰斬專有名詞（絕不夾硬放字）】**：
+   - **零容忍夾硬砌字與尾部強行墊字**：
+     - 絕對不可為了湊足音節而將 4 字句在句尾隨意加字充數！
+     - 嚴禁「我深愛祢祢」（不可重複疊字充數！遇到 5 個音，請組織自然的 2+3 或 3+2 句式，如「我心深愛祢」、「願一生愛祢」、「我深愛恩主」）。
+     - 嚴禁「我敬拜祢求」（句尾強塞孤立動詞「求」毫無文理！應寫「我心敬拜祢」、「一心敬拜祢」、「屈膝敬拜主」）。
+     - 嚴禁「祢深愛我賜」（句尾強塞孤立字「賜」成為病句！應寫「深知祢愛我」、「祢恩愛賜我」、「祢真愛顧我」）。
    - **專有名詞與核心動詞絕對不可腰斬**：
      - 嚴禁將「耶穌」縮寫成「耶」（例如用戶想寫「宣告耶穌為王」，你若為了啱音改成「宣耶王」，在粵語中意思完全錯哂、極度不敬，絕對禁止！）。
-      - 嚴禁將「萬王之王」縮寫成「萬王」（「萬王」單獨不成詞！若音階為 20 請用「作王」、「父神」、「頌揚」、「大能」）。
-      - 嚴禁寫出文法不通的硬砌字：如「我慕神」（420 毫無意義！若想表達渴慕神，在 420 請用「愛慕神」、「讚美神」，或改用 424「渴慕祢」）。
-      - 嚴禁寫出生硬古典或倒裝怪句：如「獻真主我心」（「真主」過於古典且語序生硬倒錯！請寫成自然的「向恩主獻心」）。
+     - 嚴禁將「萬王之王」縮寫成「萬王」（「萬王」單獨不成詞！若音階為 20 請用「作王」、「父神」、「頌揚」、「大能」）。
+     - 嚴禁寫出文法不通的硬砌字：如「我慕神」（420 毫無意義！若想表達渴慕神，在 420 請用「愛慕神」、「讚美神」，或改用 424「渴慕祢」）。
+     - 嚴禁寫出生硬古典或倒裝怪句：如「獻真主我心」（「真主」過於古典且語序生硬倒錯！請寫成自然的「向恩主獻心」）。
      - 「基督」、「天父」、「上帝」、「聖靈」、「救主」、「十架」、「寶血」、「救贖」、「宣告」等神聖名詞必須保持自然完整，不可畸形拼接。
      - 嚴禁生硬堆疊稱謂代名詞，如「主我神」、「祢愛我神」、「神我主」等病句。
 
@@ -420,7 +457,7 @@ ${
     }
 
     const lines = buildLyricLinesFromPatternsAndTexts(
-      rawLines,
+      parsedPatternLines,
       currentGroupTexts,
       existingLines
     );
