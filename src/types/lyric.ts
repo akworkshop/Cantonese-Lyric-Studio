@@ -61,12 +61,12 @@ export interface AlternativeCandidate {
   ergonomicsRating: VocalErgonomicsRating;
 }
 
-export type AIProviderType = 'gemini' | 'groq' | 'ollama';
+export type AIProviderType = 'gemini' | 'groq' | 'openrouter' | 'ollama';
 
 export interface AIProviderConfig {
   provider: AIProviderType;
   model: string;
-  apiKey?: string;            // Gemini or Groq API Key (optional if set in env)
+  apiKey?: string;            // Gemini, Groq or OpenRouter API Key (optional if set in env)
   ollamaBaseUrl?: string;     // Default: http://localhost:11434
   enableAutoRepair: boolean;  // 是否啟用本地字典驗證後的 AI 自動修正迴圈 (極大提升準確率)
   repairMaxRetries: number;   // 自動修正最大重試次數 (1~3)

@@ -1,7 +1,7 @@
 import { AIProviderConfig } from '@/types/lyric';
 
 export const DEFAULT_MODELS: Record<
-  'gemini' | 'groq' | 'ollama',
+  'gemini' | 'groq' | 'openrouter' | 'ollama',
   { id: string; name: string; badge: string }[]
 > = {
   gemini: [
@@ -14,6 +14,15 @@ export const DEFAULT_MODELS: Record<
     { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 (70B Distill)', badge: '深度思考推理' },
     { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant', badge: '極速輕量' },
     { id: 'qwen-qwq-32b', name: 'Qwen QwQ 32B', badge: '高階推理' },
+  ],
+  openrouter: [
+    { id: 'stealth/crouton-alpha', name: 'Crouton Alpha (Stealth)', badge: '預設・極速推薦' },
+    { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', badge: '頂級旗艦・詩意文學' },
+    { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', badge: '中文推理・極高CP值' },
+    { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1', badge: '深度思考推理' },
+    { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B Instruct', badge: '開源頂級' },
+    { id: 'openai/gpt-4o', name: 'GPT-4o', badge: 'OpenAI 旗艦' },
+    { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', badge: '極速精準' },
   ],
   ollama: [
     { id: 'qwen2.5:14b', name: 'Qwen 2.5 (14B)', badge: '本地中文首選' },
@@ -264,6 +273,124 @@ export async function callLLMJson<T>(
       }
       throw initialErr;
     }
+  }
+
+  if (provider === 'openrouter') {
+    const apiKey = (config.apiKey || process.env.OPENROUTER_API_KEY || '').trim();
+    if (!apiKey) {
+      throw new Error('請點擊右上角「模型」設定您的 OpenRouter API Key。');
+    }
+
+    const targetModel = (config.model || 'stealth/crouton-alpha').trim();
+    const isReasoning =
+      targetModel.toLowerCase().includes('deepseek-r1') ||
+      targetModel.toLowerCase().includes('r1') ||
+      targetModel.toLowerCase().includes('qwq') ||
+      targetModel.toLowerCase().includes('o1') ||
+      targetModel.toLowerCase().includes('o3');
+
+    const effectiveTemperature = isReasoning
+      ? Math.max(0.6, Math.min(temperature, 0.7))
+      : temperature;
+
+    const reasoningInstruction = isReasoning
+      ? '\n\n【重要格式要求】：請將思考過程嚴格控制在 100 字以內，切勿進行過度漫長的英文分析，請迅速直接輸出合法的 JSON 代碼區塊 ```json ... ```。'
+      : '';
+
+    const messages = isReasoning
+      ? [
+          {
+            role: 'user',
+            content: `${systemPrompt}\n\n---\n\n請務必依上述規則直接以合法 JSON 回傳：\n\n${userPrompt}${reasoningInstruction}`,
+          },
+        ]
+      : [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ];
+
+    const makeOpenRouterCall = async (useJsonFormat: boolean) => {
+      const payload: Record<string, unknown> = {
+        model: targetModel,
+        messages,
+        temperature: effectiveTemperature,
+      };
+      if (useJsonFormat) {
+        payload.response_format = { type: 'json_object' };
+      }
+
+      return fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://cantoneselyricstudio.vercel.app',
+          'X-Title': 'Cantonese Lyric Studio',
+        },
+        body: JSON.stringify(payload),
+      });
+    };
+
+    // 先嘗試帶 response_format 呼叫；若因特定模型不支援報 400，自動降級為無格式提取
+    let res = await makeOpenRouterCall(!isReasoning);
+    if (!res.ok && !isReasoning && res.status === 400) {
+      res = await makeOpenRouterCall(false);
+    }
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(
+        `OpenRouter API 錯誤 (${res.status}) [模型: ${targetModel}]: ${errBody.slice(0, 300)}`
+      );
+    }
+
+    const data = await res.json();
+    const choice = data?.choices?.[0];
+    const text = choice?.message?.content || '';
+
+    if (text) {
+      try {
+        return extractJsonFromText<T>(text);
+      } catch {
+        // continue
+      }
+    }
+
+    if (choice?.message?.reasoning) {
+      try {
+        return extractJsonFromText<T>(choice.message.reasoning);
+      } catch {
+        // continue
+      }
+    }
+
+    if ((choice?.message as { reasoning_content?: string })?.reasoning_content) {
+      try {
+        return extractJsonFromText<T>(
+          (choice.message as { reasoning_content?: string }).reasoning_content!
+        );
+      } catch {
+        // continue
+      }
+    }
+
+    if (!isReasoning) {
+      const retryRes = await makeOpenRouterCall(false);
+      if (retryRes.ok) {
+        const retryData = await retryRes.json();
+        const retryChoice = retryData?.choices?.[0];
+        const retryText =
+          retryChoice?.message?.content || retryChoice?.message?.reasoning || '';
+        if (retryText) {
+          return extractJsonFromText<T>(retryText);
+        }
+      }
+    }
+
+    const finishReason = choice?.finish_reason || 'unknown';
+    throw new Error(
+      `OpenRouter 模型 [${targetModel}] 生成未能輸出完整 JSON (finish_reason: ${finishReason})`
+    );
   }
 
   if (provider === 'ollama') {

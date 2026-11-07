@@ -181,9 +181,10 @@ export default function CantoneseLyricStudioPage() {
     enableAutoRepair: true,
     repairMaxRetries: 2,
   });
-  const [savedKeys, setSavedKeys] = useState<{ gemini: string; groq: string }>({
+  const [savedKeys, setSavedKeys] = useState<{ gemini: string; groq: string; openrouter: string }>({
     gemini: '',
     groq: '',
+    openrouter: '',
   });
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
@@ -208,6 +209,16 @@ export default function CantoneseLyricStudioPage() {
     models: [],
   });
   const [geminiStatus, setGeminiStatus] = useState<{
+    checking: boolean;
+    connected: boolean;
+    models: { id: string; name: string; badge: string }[];
+    message?: string;
+  }>({
+    checking: false,
+    connected: false,
+    models: [],
+  });
+  const [openrouterStatus, setOpenrouterStatus] = useState<{
     checking: boolean;
     connected: boolean;
     models: { id: string; name: string; badge: string }[];
@@ -317,15 +328,18 @@ export default function CantoneseLyricStudioPage() {
     const meta = user.user_metadata || {};
     const cloudGemini = (meta.gemini_key as string) || '';
     const cloudGroq = (meta.groq_key as string) || '';
+    const cloudOpenrouter = (meta.openrouter_key as string) || '';
     const cloudProvider = (meta.preferred_provider as AIProviderType) || '';
 
     const localGemini = localStorage.getItem('cls_gemini_key') || '';
     const localGroq = localStorage.getItem('cls_groq_key') || '';
+    const localOpenrouter = localStorage.getItem('cls_openrouter_key') || '';
     const localProvider = (localStorage.getItem('cls_provider') as AIProviderType) || 'gemini';
 
     // 若雲端已有 Key，優先拉取雲端；若雲端沒有但本地有，則以本地為主
     const finalGemini = cloudGemini || localGemini;
     const finalGroq = cloudGroq || localGroq;
+    const finalOpenrouter = cloudOpenrouter || localOpenrouter;
     const finalProvider = cloudProvider || localProvider;
 
     if (finalGemini) {
@@ -334,11 +348,14 @@ export default function CantoneseLyricStudioPage() {
     if (finalGroq) {
       localStorage.setItem('cls_groq_key', finalGroq);
     }
+    if (finalOpenrouter) {
+      localStorage.setItem('cls_openrouter_key', finalOpenrouter);
+    }
     if (finalProvider) {
       localStorage.setItem('cls_provider', finalProvider);
     }
 
-    setSavedKeys({ gemini: finalGemini, groq: finalGroq });
+    setSavedKeys({ gemini: finalGemini, groq: finalGroq, openrouter: finalOpenrouter });
     setAiConfig((prev) => {
       const activeProvider = finalProvider || prev.provider;
       const activeKey =
@@ -346,6 +363,8 @@ export default function CantoneseLyricStudioPage() {
           ? finalGemini
           : activeProvider === 'groq'
           ? finalGroq
+          : activeProvider === 'openrouter'
+          ? finalOpenrouter
           : '';
       return {
         ...prev,
@@ -359,6 +378,7 @@ export default function CantoneseLyricStudioPage() {
       supabase &&
       ((!cloudGemini && localGemini) ||
         (!cloudGroq && localGroq) ||
+        (!cloudOpenrouter && localOpenrouter) ||
         (!cloudProvider && localProvider))
     ) {
       try {
@@ -366,6 +386,7 @@ export default function CantoneseLyricStudioPage() {
           data: {
             gemini_key: finalGemini,
             groq_key: finalGroq,
+            openrouter_key: finalOpenrouter,
             preferred_provider: finalProvider,
           },
         });
@@ -391,14 +412,22 @@ export default function CantoneseLyricStudioPage() {
     try {
       const savedGemini = localStorage.getItem('cls_gemini_key') || '';
       const savedGroq = localStorage.getItem('cls_groq_key') || '';
+      const savedOpenrouter = localStorage.getItem('cls_openrouter_key') || '';
       const savedProvider = (localStorage.getItem('cls_provider') as AIProviderType) || 'gemini';
       const savedOllamaUrl = localStorage.getItem('cls_ollama_url') || 'http://localhost:11434';
-      setSavedKeys({ gemini: savedGemini, groq: savedGroq });
+      setSavedKeys({ gemini: savedGemini, groq: savedGroq, openrouter: savedOpenrouter });
       setAiConfig((prev) => ({
         ...prev,
         provider: savedProvider,
         model: DEFAULT_MODELS[savedProvider]?.[0]?.id || prev.model,
-        apiKey: savedProvider === 'gemini' ? savedGemini : savedProvider === 'groq' ? savedGroq : '',
+        apiKey:
+          savedProvider === 'gemini'
+            ? savedGemini
+            : savedProvider === 'groq'
+            ? savedGroq
+            : savedProvider === 'openrouter'
+            ? savedOpenrouter
+            : '',
         ollamaBaseUrl: savedOllamaUrl,
       }));
 
@@ -978,6 +1007,49 @@ export default function CantoneseLyricStudioPage() {
     }
   }, []);
 
+  // 檢查 OpenRouter 帳號可用模型（包含預設 stealth/crouton-alpha, Claude, DeepSeek 等）
+  const checkOpenRouterModels = useCallback(async (apiKey: string) => {
+    setOpenrouterStatus((prev) => ({ ...prev, checking: true, message: undefined }));
+    try {
+      const res = await fetch('/api/openrouter-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey }),
+      });
+      const data = await res.json();
+      if (data.connected && data.models?.length > 0) {
+        setOpenrouterStatus({
+          checking: false,
+          connected: true,
+          models: data.models,
+          message: `已成功讀取 ${data.models.length} 個可用 OpenRouter 模型（預設 stealth/crouton-alpha）`,
+        });
+        setAiConfig((prev) => {
+          const hasCurrent = data.models.some((m: { id: string }) => m.id === prev.model);
+          const crouton = data.models.find((m: { id: string }) => m.id === 'stealth/crouton-alpha');
+          return {
+            ...prev,
+            model: hasCurrent ? prev.model : crouton ? crouton.id : data.models[0].id,
+          };
+        });
+      } else {
+        setOpenrouterStatus({
+          checking: false,
+          connected: false,
+          models: DEFAULT_MODELS.openrouter,
+          message: data.error || '無法讀取模型列表，已切換為 OpenRouter 預設推薦清單',
+        });
+      }
+    } catch {
+      setOpenrouterStatus({
+        checking: false,
+        connected: false,
+        models: DEFAULT_MODELS.openrouter,
+        message: '連線失敗，已載入 OpenRouter 預設推薦模型',
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (showSettingsModal && aiConfig.provider === 'ollama') {
       checkOllamaConnection(aiConfig.ollamaBaseUrl || 'http://localhost:11434');
@@ -988,6 +1060,9 @@ export default function CantoneseLyricStudioPage() {
     if (showSettingsModal && aiConfig.provider === 'gemini' && aiConfig.apiKey) {
       checkGeminiModels(aiConfig.apiKey);
     }
+    if (showSettingsModal && aiConfig.provider === 'openrouter') {
+      checkOpenRouterModels(aiConfig.apiKey || '');
+    }
   }, [
     showSettingsModal,
     aiConfig.provider,
@@ -996,6 +1071,7 @@ export default function CantoneseLyricStudioPage() {
     checkOllamaConnection,
     checkGroqModels,
     checkGeminiModels,
+    checkOpenRouterModels,
   ]);
 
   // 記錄歷史並自動保存
@@ -1036,9 +1112,17 @@ export default function CantoneseLyricStudioPage() {
         ? geminiStatus.models[0].id
         : provider === 'groq' && groqStatus.models.length > 0
         ? groqStatus.models[0].id
+        : provider === 'openrouter' && openrouterStatus.models.length > 0
+        ? openrouterStatus.models[0].id
         : DEFAULT_MODELS[provider][0].id;
     const nextKey =
-      provider === 'gemini' ? savedKeys.gemini : provider === 'groq' ? savedKeys.groq : '';
+      provider === 'gemini'
+        ? savedKeys.gemini
+        : provider === 'groq'
+        ? savedKeys.groq
+        : provider === 'openrouter'
+        ? savedKeys.openrouter
+        : '';
 
     setAiConfig((prev) => ({ ...prev, provider, model: nextModel, apiKey: nextKey }));
     try {
@@ -1064,12 +1148,26 @@ export default function CantoneseLyricStudioPage() {
       try {
         localStorage.setItem('cls_groq_key', val);
       } catch {}
+    } else if (provider === 'openrouter') {
+      setSavedKeys((prev) => ({ ...prev, openrouter: val }));
+      try {
+        localStorage.setItem('cls_openrouter_key', val);
+      } catch {}
     }
 
     // 若已登入，即時自動同步到 Supabase 帳號 metadata
     if (supabase && currentUser) {
-      const field = provider === 'gemini' ? 'gemini_key' : 'groq_key';
-      supabase.auth.updateUser({ data: { [field]: val } }).catch(() => {});
+      const field =
+        provider === 'gemini'
+          ? 'gemini_key'
+          : provider === 'groq'
+          ? 'groq_key'
+          : provider === 'openrouter'
+          ? 'openrouter_key'
+          : null;
+      if (field) {
+        supabase.auth.updateUser({ data: { [field]: val } }).catch(() => {});
+      }
     }
   };
 
@@ -3437,7 +3535,7 @@ export default function CantoneseLyricStudioPage() {
           >
             <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
               <h3 className="font-semibold text-base text-zinc-900">
-                AI 模型設定 (Gemini / Groq / Ollama)
+                AI 模型設定 (Gemini / Groq / OpenRouter / Ollama)
               </h3>
               <button
                 onClick={() => setShowSettingsModal(false)}
@@ -3450,20 +3548,21 @@ export default function CantoneseLyricStudioPage() {
             <div className="space-y-4 text-xs">
               <div className="space-y-1.5">
                 <label className="font-medium text-zinc-700">選擇模型供應商</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                   {(
                     [
                       { id: 'gemini', label: 'Gemini API' },
                       { id: 'groq', label: 'Groq (GPT-OSS)' },
+                      { id: 'openrouter', label: 'OpenRouter' },
                       { id: 'ollama', label: '本地 Ollama' },
                     ] as const
                   ).map((item) => (
                     <button
                       key={item.id}
                       onClick={() => handleProviderChange(item.id)}
-                      className={`py-2 px-3 rounded-lg font-medium border transition ${
+                      className={`py-2 px-2.5 rounded-lg font-medium border text-center transition ${
                         aiConfig.provider === item.id
-                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          ? 'bg-zinc-900 text-white border-zinc-900 shadow-xs'
                           : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
                       }`}
                     >
@@ -3488,6 +3587,8 @@ export default function CantoneseLyricStudioPage() {
                     ? geminiStatus.models
                     : aiConfig.provider === 'groq' && groqStatus.models.length > 0
                     ? groqStatus.models
+                    : aiConfig.provider === 'openrouter' && openrouterStatus.models.length > 0
+                    ? openrouterStatus.models
                     : DEFAULT_MODELS[aiConfig.provider]
                   ).map((m) => (
                     <option key={m.id} value={m.id}>
@@ -3501,7 +3602,11 @@ export default function CantoneseLyricStudioPage() {
                   onChange={(e) =>
                     setAiConfig((prev) => ({ ...prev, model: e.target.value }))
                   }
-                  placeholder="亦可直接輸入模型 ID（例如 gemini-2.5-flash 或 llama-3.3-70b-versatile）"
+                  placeholder={
+                    aiConfig.provider === 'openrouter'
+                      ? '亦可自訂輸入模型 ID（例如 stealth/crouton-alpha 或 anthropic/claude-3.5-sonnet）'
+                      : '亦可直接輸入模型 ID（例如 gemini-2.5-flash 或 llama-3.3-70b-versatile）'
+                  }
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-800 focus:outline-none focus:border-zinc-900 mt-1.5"
                 />
               </div>
@@ -3510,7 +3615,12 @@ export default function CantoneseLyricStudioPage() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="font-medium text-zinc-700">
-                      {aiConfig.provider === 'gemini' ? 'Gemini' : 'Groq'} API Key
+                      {aiConfig.provider === 'gemini'
+                        ? 'Gemini'
+                        : aiConfig.provider === 'groq'
+                        ? 'Groq'
+                        : 'OpenRouter'}{' '}
+                      API Key
                     </label>
                     {aiConfig.provider === 'gemini' && (
                       <button
@@ -3532,6 +3642,17 @@ export default function CantoneseLyricStudioPage() {
                         {groqStatus.checking
                           ? '正在讀取帳號可用模型...'
                           : '🔍 偵測帳號可用模型 (GPT-OSS)'}
+                      </button>
+                    )}
+                    {aiConfig.provider === 'openrouter' && (
+                      <button
+                        type="button"
+                        onClick={() => checkOpenRouterModels(aiConfig.apiKey || '')}
+                        className="text-[11px] text-zinc-600 hover:text-zinc-900 underline font-medium"
+                      >
+                        {openrouterStatus.checking
+                          ? '正在讀取 OpenRouter 可用模型...'
+                          : '🔍 偵測帳號可用 OpenRouter 模型'}
                       </button>
                     )}
                   </div>
@@ -3575,6 +3696,34 @@ export default function CantoneseLyricStudioPage() {
                       }`}
                     >
                       {geminiStatus.message}
+                    </p>
+                  )}
+                  {aiConfig.provider === 'openrouter' && (
+                    <div className="pt-0.5 text-[11px] text-zinc-500 flex items-center justify-between flex-wrap gap-1">
+                      <span>
+                        💡 預設採用{' '}
+                        <code className="bg-zinc-100 px-1 py-0.5 rounded font-mono text-zinc-800">
+                          stealth/crouton-alpha
+                        </code>
+                      </span>
+                      <a
+                        href="https://openrouter.ai/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-zinc-700 hover:text-zinc-900 underline font-medium inline-flex items-center gap-0.5"
+                      >
+                        <span>前往 OpenRouter 取得金鑰</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+                  )}
+                  {aiConfig.provider === 'openrouter' && openrouterStatus.message && (
+                    <p
+                      className={`text-[11px] ${
+                        openrouterStatus.connected ? 'text-emerald-600' : 'text-amber-600'
+                      }`}
+                    >
+                      {openrouterStatus.message}
                     </p>
                   )}
                 </div>

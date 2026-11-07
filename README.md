@@ -23,7 +23,7 @@
 
 粵語擁有「九聲六調」，若歌詞聲調與旋律走向不吻合，便會出現嚴重的「倒音（音不協）」現象，甚至產生尷尬歧義。傳統廣東話填詞講究「**0243 協音法**」，將粵語聲調簡化為四個階梯，讓詞曲完美合一。
 
-**Cantonese Lyric Studio（粵語詩歌填詞工作室）** 專為基督教敬拜者、填詞人及音樂事工團隊而設計。結合了現代 AI（Gemini、Groq、Ollama）與權威的粵語字音檢驗引擎（`to-jyutping` + 本地 3,800+ 聖經神學詞庫），實現 **100% 嚴格音階對位、全自動精準驗證、跨設備雲端同步**！
+**Cantonese Lyric Studio（粵語詩歌填詞工作室）** 專為基督教敬拜者、填詞人及音樂事工團隊而設計。結合了現代 AI（Gemini、Groq、OpenRouter、Ollama）與權威的粵語字音檢驗引擎（`to-jyutping` + 本地 3,800+ 聖經神學詞庫），實現 **100% 嚴格音階對位、全自動精準驗證、跨設備雲端同步**！
 
 ```mermaid
 flowchart LR
@@ -58,6 +58,7 @@ flowchart LR
 - 🤖 **大師級 AI 填詞（多模型支援）**：
   - 支援 **Google Gemini**（Gemini 2.5 Flash / 1.5 Pro）
   - 支援 **Groq** 超高速開源模型（Llama 3.3 70B）
+  - 支援 **OpenRouter**（含預設 `stealth/crouton-alpha`、Claude 3.5 Sonnet、DeepSeek R1/V3、Llama 3.3 70B 等聚合模型）
   - 支援 **Ollama** 本地完全離線運算
   - 內建 **本地抒情神學詞庫**，即使不連 AI 也能一鍵生成！
 - 📜 **豐富的聖經人物與神學典故詞庫**：
@@ -110,9 +111,11 @@ graph TD
     A[點擊設定圖示] --> B{選擇 AI 服務商}
     B -->|推薦: Google Gemini| C[至 Google AI Studio 申請免費 API Key]
     B -->|超高速: Groq| D[至 Groq Console 申請免費 API Key]
+    B -->|多元聚合: OpenRouter| H[至 OpenRouter 申請金鑰，預設 stealth/crouton-alpha]
     B -->|隱私離線: Ollama| E[本機安裝 Ollama 並輸入 http://localhost:11434]
     C --> F[貼上金鑰並點擊完成]
     D --> F
+    H --> F
     E --> F
     F --> G[開始創作詩歌 🎶]
 ```
@@ -124,10 +127,15 @@ graph TD
 
 ### 2. Groq（生成速度極快，毫秒級回應）
 1. 前往 [Groq Console](https://console.groq.com/keys) 免費建立 API Key。
-2. 在設定中選擇 **Groq (Llama 3)**。
+2. 在設定中選擇 **Groq (GPT-OSS)**。
 3. 推薦使用 `llama-3.3-70b-versatile` 模型。
 
-### 3. Ollama（本機完全離線私有化）
+### 3. OpenRouter（聚合眾多模型，預設極速 crouton-alpha）
+1. 前往 [OpenRouter Keys](https://openrouter.ai/keys) 建立 API Key。
+2. 在設定中選擇 **OpenRouter**。
+3. 預設選用推薦極速模型 `stealth/crouton-alpha`，亦可一鍵切換或自動探測 Claude 3.5 Sonnet、DeepSeek R1/V3、Llama 3.3 等全球頂尖模型。
+
+### 4. Ollama（本機完全離線私有化）
 1. 下載並安裝 [Ollama](https://ollama.ai/)。
 2. 終端機執行 `ollama run qwen2.5:7b` 或 `ollama run llama3.1`。
 3. 在設定中填入位址（預設為 `http://localhost:11434`）即可！
