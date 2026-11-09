@@ -148,12 +148,18 @@ ${
 
 請提供 6 個緊扣主題故事且 100% 符合 [${cleanTargetPattern}] 聲調的 AI 原創候選詞（JSON）。`;
 
-    const rawResponse = await callLLMJson<LLMSuggestResponse>(
-      aiConfig,
-      systemPrompt,
-      userPrompt,
-      0.45
-    );
+    let rawResponse: LLMSuggestResponse | null = null;
+    try {
+      rawResponse = await callLLMJson<LLMSuggestResponse>(
+        aiConfig,
+        systemPrompt,
+        userPrompt,
+        0.45,
+        4500 // 4.5 秒超時保護，杜絕 Vercel 10s 504 Timeout
+      );
+    } catch (e) {
+      console.warn('AI 建議替換逾時或失敗，切換至本地詞庫無縫補足：', e);
+    }
 
     const processRawCandidates = (
       rawList: { text: string; toneAnalysis?: string; vocalErgonomics?: string }[]
@@ -196,66 +202,17 @@ ${
     let evaluatedCandidates = processRawCandidates(rawResponse?.candidates || []);
     let exactMatches = evaluatedCandidates.filter((c) => c.isExactToneMatch);
 
-    // 若啟用自動修正且 100% 協音吻合的候選詞不足 3 個，執行一次 AI 精準修正請求
-    if (aiConfig.enableAutoRepair && exactMatches.length < 3) {
-      const failedDesc = evaluatedCandidates
-        .filter((c) => !c.isExactToneMatch)
-        .map(
-          (c) =>
-            `「${c.text}」實際為 [${c.actualPattern}] (${c.jyutpingList.join(
-              ' '
-            )})，與目標 [${cleanTargetPattern}] 不符`
-        )
-        .join('；');
-
-      const perPositionHint = Array.from(cleanTargetPattern)
-        .map(
-          (tone, idx) =>
-            `第${idx + 1}字必須是 [${tone}聲]（可用字：${(
-              VERIFIED_CANTONESE_WORSHIP_CHARS[tone] || []
-            )
-              .slice(0, 15)
-              .join('、')}）`
-        )
-        .join('\n');
-
-      const repairPrompt = `你剛剛提供的候選詞中，有以下詞組未通過本地粵拼 0243 檢驗：
-${failedDesc || '候選詞數量不足'}
-
-請嚴格按照每個位置的聲調要求，重新提供 5 個 **100% 符合 [${cleanTargetPattern}]** 的候選詞：
-${perPositionHint}
-${
-  verifiedExamples.length > 0
-    ? `你也可以優先從這些 100% 已驗證詞組中挑選最合適的並撰寫分析：${verifiedExamples.join('、')}`
-    : ''
-}`;
-
-      try {
-        const repairRes = await callLLMJson<LLMSuggestResponse>(
-          aiConfig,
-          systemPrompt,
-          repairPrompt,
-          0.25
-        );
-        const repairedCandidates = processRawCandidates(repairRes?.candidates || []);
-        const combinedMap = new Map<string, AlternativeCandidate>();
-        [...exactMatches, ...repairedCandidates, ...evaluatedCandidates].forEach((c) => {
-          if (!combinedMap.has(c.text)) {
-            combinedMap.set(c.text, c);
-          }
-        });
-        evaluatedCandidates = Array.from(combinedMap.values());
-        exactMatches = evaluatedCandidates.filter((c) => c.isExactToneMatch);
-      } catch {
-        // fallback to dictionary augmentation below
-      }
-    }
-
-    // Stage 3: 若經過 AI 生成後 100% 協音吻合的候選詞仍少於 4 個，自動以本地已驗證神學詞庫補齊至 4 個！
-    if (exactMatches.length < 4 && verifiedExamples.length > 0) {
+    // Stage 3: 若 AI 產出中 100% 協音吻合的候選詞少於 6 個，由本地已驗證神學詞庫無縫補齊至 6 個！
+    if (exactMatches.length < 6) {
       const existingTexts = new Set(evaluatedCandidates.map((c) => c.text));
-      for (const verifiedWord of verifiedExamples) {
+      const pool = [
+        ...verifiedExamples,
+        ...getVerifiedCandidatesForGroupPattern(cleanTargetPattern, 20, true, themeContext),
+      ];
+
+      for (const verifiedWord of pool) {
         if (existingTexts.has(verifiedWord)) continue;
+        if (!matchesLockedConstraint(verifiedWord)) continue;
         const check = verifyPhraseAgainstPattern(verifiedWord, cleanTargetPattern);
         if (check.isExactMatch) {
           exactMatches.push({
@@ -265,17 +222,17 @@ ${
             actualPattern: check.actualPattern,
             isExactToneMatch: true,
             jyutpingList: check.jyutpingList,
-            toneAnalysis: `【本地協音詞庫精選】100% 符合 [${cleanTargetPattern}] 聲調對位，切合敬拜詩歌語境。`,
+            toneAnalysis: `【100% 協音精選】聲調精準吻合 [${cleanTargetPattern}]，符合基督教詩歌意境。`,
             vocalErgonomics: check.endErgonomics.note,
             ergonomicsRating: check.endErgonomics.rating,
           });
           existingTexts.add(verifiedWord);
-          if (exactMatches.length >= 4) break;
+          if (exactMatches.length >= 6) break;
         }
       }
     }
 
-    // 優先排序：100% 協音吻合 + 聲樂開口度佳者排最前，取前 4 個
+    // 優先排序：100% 協音吻合 + 聲樂開口度佳者排最前，最多提供 6 個優質選項
     const ratingScore: Record<string, number> = {
       excellent: 4,
       good: 3,
@@ -289,7 +246,7 @@ ${
           (ratingScore[b.ergonomicsRating] || 0) - (ratingScore[a.ergonomicsRating] || 0)
       ),
       ...evaluatedCandidates.filter((c) => !c.isExactToneMatch),
-    ].slice(0, 4);
+    ].slice(0, 6);
 
     return NextResponse.json({
       candidates: finalCandidates,
