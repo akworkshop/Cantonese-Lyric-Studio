@@ -534,7 +534,7 @@ ${errorNotes.join('\n\n')}
       }
     }
 
-    // Stage 3: 高保真字級/詞級本地 100% 協音補全（0.001 秒，優先保留 AI 原創好詞，僅替換有瑕疵的單字）
+    // Stage 3: 高保真整組本地 100% 協音補全（0.001 秒，嚴禁隨機單字硬塞，確保每一組都是完整優美的神學詞組）
     const allPendingGroupIssues = new Set<string>();
     currentEval.errorDetails.forEach((e) => allPendingGroupIssues.add(`${e.lineIdx}-${e.groupIdx}`));
     currentViolations.forEach((v) => allPendingGroupIssues.add(`${v.lineIdx}-${v.groupIdx}`));
@@ -548,40 +548,12 @@ ${errorNotes.join('\n\n')}
 
       const currentPhrase = currentGroupTexts[lineIdx]?.[groupIdx] || '';
       const check = verifyPhraseAgainstPattern(currentPhrase, targetPattern);
+      const hasViolation = currentViolations.some((v) => v.lineIdx === lineIdx && v.groupIdx === groupIdx);
 
-      // A. 若字數相符且僅有 1~2 個字唔啱音，優先只替換那 1~2 個字，保留其餘所有良好字！
-      if (
-        currentPhrase.length === targetPattern.length &&
-        check.mismatches.length > 0 &&
-        check.mismatches.length <= 2
-      ) {
-        const charArray = Array.from(currentPhrase);
-        const existingGroup = existingLines[lineIdx]?.groups?.[groupIdx];
+      // 若原詞已經 100% 協音且無人稱違規，保留原貌
+      if (check.isExactMatch && !hasViolation) return;
 
-        check.mismatches.forEach((m) => {
-          const tok = existingGroup?.tokens?.[m.index];
-          if (tok && tok.status === 'locked' && tok.char !== '＿') return; // 已鎖定字不修改
-
-          const validChars = VERIFIED_CANTONESE_WORSHIP_CHARS[m.expected] || [];
-          let candidateChars = validChars.map((c) => c.replace(/\(.*\)/, '')).filter(Boolean);
-
-          if (perspective === 'congregational') {
-            candidateChars = candidateChars.filter((c) => c !== '我');
-          }
-
-          if (candidateChars.length > 0) {
-            charArray[m.index] = candidateChars[0];
-          }
-        });
-
-        const fixedPhrase = charArray.join('');
-        if (verifyPhraseAgainstPattern(fixedPhrase, targetPattern).isExactMatch) {
-          currentGroupTexts[lineIdx][groupIdx] = fixedPhrase;
-          return;
-        }
-      }
-
-      // B. 若單字替換未達標，從本地驗證詞庫中挑選與主題最吻合的完整協音詞組
+      // 從本地高精度神學協音詞庫中，選取 100% 吻合該音階且語意完整的整組好詞（如「萬民曙光」、「事奉永生」）
       let verifiedCandidates = getVerifiedCandidatesForGroupPattern(
         targetPattern,
         24,

@@ -1164,6 +1164,14 @@ function isNaturalCombinedPhrase(left: string, right: string): boolean {
 
   // 5. 避免詞組結尾停在懸空介詞／連詞／副詞（如「...在」、「...向」、「...求」、「...更」）
   const lastChar = chars[chars.length - 1];
+
+  // 6. 讚美宣揚類動詞禁止與負面/自然災害名詞生硬拼接（如「頌揚大水」、「讚美風暴」等無神學依據之怪詞）
+  const praiseVerbs = ['頌揚', '讚美', '稱頌', '高唱', '歌頌', '宣揚', '高舉', '稱揚', '歡唱'];
+  const calamityNouns = ['大水', '風暴', '洪水', '狂風', '幽谷', '黑夜', '暗夜', '死蔭', '波濤', '巨浪'];
+  if (praiseVerbs.some((v) => left.includes(v)) && calamityNouns.some((n) => right.includes(n))) {
+    return false;
+  }
+
   // 7. 嚴禁任何文理不通、生硬古怪的死板拼湊（例如「真主」、「我慕神」、「慕神」、「萬王」作為雙字）
   if (combined.includes('真主')) return false; // 「真主」非現代粵語基督教詩歌用語
   if (combined.includes('慕神') || combined.includes('我慕')) return false; // 「我慕神」不合粵語語法，應用「愛慕神」、「渴慕神」或「渴慕祢」
