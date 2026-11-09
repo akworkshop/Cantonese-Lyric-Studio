@@ -66,13 +66,15 @@ export function extractJsonFromText<T>(rawText: string): T {
 }
 
 /**
- * 統一呼叫 Gemini API / Groq API (含 GPT-OSS) / 本地 Ollama 並回傳結構化 JSON
+ * 統一呼叫 Gemini API / Groq API (含 GPT-OSS) / OpenRouter / 本地 Ollama 並回傳結構化 JSON
+ * 支援 timeoutMs（超時中斷保護，避免 Vercel 10s 網關逾時）
  */
 export async function callLLMJson<T>(
   config: AIProviderConfig,
   systemPrompt: string,
   userPrompt: string,
-  temperature = 0.4
+  temperature = 0.4,
+  timeoutMs = 7000
 ): Promise<T> {
   const provider = config.provider || 'gemini';
 
@@ -89,6 +91,7 @@ export async function callLLMJson<T>(
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         systemInstruction: {
           parts: [{ text: systemPrompt }],
@@ -174,6 +177,7 @@ export async function callLLMJson<T>(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
           },
+          signal: AbortSignal.timeout(timeoutMs),
           body: JSON.stringify(payload),
         });
       };
@@ -327,6 +331,7 @@ export async function callLLMJson<T>(
           'HTTP-Referer': 'https://cantoneselyricstudio.vercel.app',
           'X-Title': 'Cantonese Lyric Studio',
         },
+        signal: AbortSignal.timeout(timeoutMs),
         body: JSON.stringify(payload),
       });
     };
@@ -404,6 +409,7 @@ export async function callLLMJson<T>(
     const res = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         model,
         stream: false,

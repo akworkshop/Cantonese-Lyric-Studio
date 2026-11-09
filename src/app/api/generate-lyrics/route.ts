@@ -23,6 +23,7 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
   try {
     const body = await req.json();
     const {
@@ -151,9 +152,8 @@ export async function POST(req: NextRequest) {
 1. **【最高鐵律：嚴禁文法倒錯、拼湊怪句、尾部強塞贅字與腰斬專有名詞（絕不夾硬放字）】**：
    - **零容忍夾硬砌字與尾部強行墊字**：
      - 絕對不可為了湊足音節而將 4 字句在句尾隨意加字充數！
-     - 嚴禁「我深愛祢祢」（不可重複疊字充數！遇到 5 個音，請組織自然的 2+3 或 3+2 句式，如「我心深愛祢」、「願一生愛祢」、「我深愛恩主」）。
-     - 嚴禁「我敬拜祢求」（句尾強塞孤立動詞「求」毫無文理！應寫「我心敬拜祢」、「一心敬拜祢」、「屈膝敬拜主」）。
-     - 嚴禁「祢深愛我賜」（句尾強塞孤立字「賜」成為病句！應寫「深知祢愛我」、「祢恩愛賜我」、「祢真愛顧我」）。
+     - 嚴禁句尾疊字或強塞孤立無意義動詞（如「願稱頌主主」、「齊歌唱主求」等毫無文理之病句）。
+     - 每句文字必須符合正規粵語語法，具有完整的主謂賓結構。
    - **專有名詞與核心動詞絕對不可腰斬**：
      - 嚴禁將「耶穌」縮寫成「耶」（例如用戶想寫「宣告耶穌為王」，你若為了啱音改成「宣耶王」，在粵語中意思完全錯哂、極度不敬，絕對禁止！）。
      - 嚴禁將「萬王之王」縮寫成「萬王」（「萬王」單獨不成詞！若音階為 20 請用「作王」、「父神」、「頌揚」、「大能」）。
@@ -226,13 +226,19 @@ ${lineSpecs.map((s) => s.constraintText).join('\n')}
 
 請務必緊扣「${title} — ${meaning}」的故事核心來構思全新的原創詩句，嚴格遵守人稱視角（若是會眾宣告模式，嚴禁使用單數「我」；主歌必須鋪陳描寫場景，副歌才齊聲宣告高潮），嚴格按照每行每組的字數與 0243 聲調選字，回傳 JSON。`;
 
-    // 執行第一輪 LLM 生成（提高溫度至 0.65，避免千篇一律的套話，激發文學多樣性）
-    const firstPass = await callLLMJson<LLMGenerateResponse>(
-      aiConfig,
-      systemPrompt,
-      userPrompt,
-      0.65
-    );
+    // 執行第一輪 LLM 生成（設置 5 秒超時，預留充足時間給本地審查與單次定向微修，杜絕 Vercel 504）
+    let firstPass: LLMGenerateResponse | null = null;
+    try {
+      firstPass = await callLLMJson<LLMGenerateResponse>(
+        aiConfig,
+        systemPrompt,
+        userPrompt,
+        0.65,
+        5000
+      );
+    } catch (pass1Err) {
+      console.warn('AI 初稿生成逾時或異常，由本地神學詞庫無縫補全：', pass1Err);
+    }
 
     const currentGroupTexts: string[][] = lineSpecs.map((spec, lIdx) => {
       const foundLine =
@@ -317,6 +323,58 @@ ${lineSpecs.map((s) => s.constraintText).join('\n')}
       };
     };
 
+    // 檢查人稱視角違規（如：會眾全體宣告模式嚴禁單數私禱稱謂）
+    const checkPerspectiveViolations = (texts: string[][]) => {
+      const violations: {
+        lineIdx: number;
+        groupIdx: number;
+        targetPattern: string;
+        currentPhrase: string;
+        problemDesc: string;
+      }[] = [];
+
+      if (perspective !== 'congregational' && perspective !== 'narrative') {
+        return violations;
+      }
+
+      const forbiddenDevotional = [
+        '我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕',
+        '向我', '伴我', '叫我', '憐憫我', '救我', '懂我心', '聽我'
+      ];
+
+      texts.forEach((line, lIdx) => {
+        line.forEach((group, gIdx) => {
+          const gPat = lineSpecs[lIdx]?.groupPatterns?.[gIdx] || '';
+          for (const bad of forbiddenDevotional) {
+            if (group.includes(bad)) {
+              violations.push({
+                lineIdx: lIdx,
+                groupIdx: gIdx,
+                targetPattern: gPat,
+                currentPhrase: group,
+                problemDesc: `詞組「${group}」包含單數私禱稱謂「${bad}」，違背了【${activePerspective.title}】要求。請使用會眾詞彙（如「眾心/全地/萬民/我們/同心/齊聲」）`,
+              });
+              return;
+            }
+          }
+          if (perspective === 'congregational') {
+            const withoutWe = group.replace(/我們|我和/g, '');
+            if (withoutWe.includes('我')) {
+              violations.push({
+                lineIdx: lIdx,
+                groupIdx: gIdx,
+                targetPattern: gPat,
+                currentPhrase: group,
+                problemDesc: `詞組「${group}」使用了單數「我」，會眾宣告模式嚴禁單數私禱，請改用「我們」、「眾」、「萬民」或客觀敬拜詞彙`,
+              });
+            }
+          }
+        });
+      });
+
+      return violations;
+    };
+
     // 檢查全曲詞彙重複率（除核心代名詞外，實詞不可重複超過 3 次）
     const findExcessiveRepetitions = (
       groupTexts: string[][],
@@ -357,47 +415,67 @@ ${lineSpecs.map((s) => s.constraintText).join('\n')}
 
     const initialEval = evaluateAccuracy(currentGroupTexts);
     let currentEval = initialEval;
+    let initialViolations = checkPerspectiveViolations(currentGroupTexts);
+    let currentViolations = initialViolations;
     let excessiveReps = findExcessiveRepetitions(currentGroupTexts, 3);
     let repairCount = 0;
-    const maxRetries = aiConfig.enableAutoRepair
-      ? Math.min(Math.max(aiConfig.repairMaxRetries || 2, 1), 3)
-      : 0;
 
-    // Stage 2: 本地粵拼審音 + 詞彙多樣性（最多重複3次） + 保留主題語意之 AI 自動修正迴圈
-    while (
-      (currentEval.errorDetails.length > 0 || excessiveReps.length > 0) &&
-      repairCount < maxRetries
+    // Stage 2: 輕量級定向微修 (Delta Repair) - 嚴格限制在 8 秒安全預算內，杜絕 Vercel 10s 504 Timeout
+    const elapsedAfterPass1 = Date.now() - startTime;
+    const budgetRemaining = 8000 - elapsedAfterPass1;
+    const needsRepair =
+      currentEval.errorDetails.length > 0 ||
+      currentViolations.length > 0 ||
+      excessiveReps.length > 0;
+
+    if (
+      aiConfig.enableAutoRepair !== false &&
+      needsRepair &&
+      budgetRemaining >= 2500
     ) {
-      repairCount++;
-      const repIssues =
-        excessiveReps.length > 0
-          ? `\n發現以下詞彙在全曲重複超過 3 次（過度重複）：\n${excessiveReps
-              .map((e) => `- 「${e.word}」共出現了 ${e.count} 次，請改用同義詞替換其中部分，保持豐富不單調！`)
-              .join('\n')}`
-          : '';
+      repairCount = 1;
+      const errorNotes: string[] = [];
+      if (currentEval.errorDetails.length > 0) {
+        errorNotes.push(
+          '【唔啱音問題】：\n' +
+            currentEval.errorDetails.map((e) => `- ${e.problemDesc}`).join('\n')
+        );
+      }
+      if (currentViolations.length > 0) {
+        errorNotes.push(
+          '【人稱視角違規】：\n' +
+            currentViolations.map((v) => `- 第 ${v.lineIdx + 1} 行第 ${v.groupIdx + 1} 組: ${v.problemDesc}`).join('\n')
+        );
+      }
+      if (excessiveReps.length > 0) {
+        errorNotes.push(
+          '【過度重複詞彙】：\n' +
+            excessiveReps.map((r) => `- 「${r.word}」出現 ${r.count} 次，請用同義詞替換`).join('\n')
+        );
+      }
 
-      const repairUserPrompt = `我們使用本地粵語字典（to-jyutping）檢驗了你為《${title}》（主題：${meaning}）生成的歌詞草稿：
+      const repairUserPrompt = `我們檢驗了你為《${title}》（主題：${meaning}）生成的歌詞草稿：
 ${currentGroupTexts
   .map((gList, idx) => `第 ${idx + 1} 行 (${lineSpecs[idx].targetPattern})：${gList.join(' ')}`)
   .join('\n')}
-${
-  currentEval.errorDetails.length > 0
-    ? `\n發現以下詞組存在「唔啱音（聲調不符）」：\n${currentEval.errorDetails.map((e) => `- ${e.problemDesc}`).join('\n')}`
-    : ''
-}${repIssues}
 
-【修正重要原則】：
-1. 修正後的字必須 100% 符合目標 0243 數字譜。
-2. 同一詞彙在全曲絕不可重複超過 3 次（除我、祢、祂、主、神外）。
-3. **極重要：請務必保留原句對主題故事「${title} — ${meaning}」的表達！優先只修改唔啱音或重複的那 1～2 個字，切勿把整句換成與主題無關的空泛詞語！**
-請以相同的 JSON 格式回傳完整的 "lines" 陣列。`;
+發現以下少數問題需要微修：
+${errorNotes.join('\n\n')}
+
+【極重要微修原則】：
+1. 絕不重寫整首歌！請保留其餘所有良好且協音的詞句與故事情感，僅定向修改上述有瑕疵的詞組。
+2. 修正後的字必須 100% 吻合該組目標 0243 聲調。
+3. 嚴格遵守人稱視角【${activePerspective.title}】。
+請以相同 JSON 格式回傳完整的 "lines" 陣列。`;
 
       try {
+        const deltaTimeout = Math.min(budgetRemaining - 500, 3000);
         const repairedPass = await callLLMJson<LLMGenerateResponse>(
           aiConfig,
           systemPrompt,
           repairUserPrompt,
-          0.25
+          0.2,
+          deltaTimeout
         );
 
         lineSpecs.forEach((spec, lIdx) => {
@@ -409,7 +487,12 @@ ${
           spec.groupPatterns.forEach((gPat, gIdx) => {
             const oldPhrase = currentGroupTexts[lIdx][gIdx];
             const oldCheck = verifyPhraseAgainstPattern(oldPhrase, gPat);
-            if (oldCheck.isExactMatch) return;
+            const hasViolation = currentViolations.some(
+              (v) => v.lineIdx === lIdx && v.groupIdx === gIdx
+            );
+
+            // 若原本已經完全協音且無人稱違規，優先保留原詞，避免 AI 節外生枝
+            if (oldCheck.isExactMatch && !hasViolation) return;
 
             const newRaw = (repLine.groups?.[gIdx] || '').replace(/[^\u4e00-\u9fa5]/g, '');
             if (!newRaw) return;
@@ -432,7 +515,7 @@ ${
             const newCheck = verifyPhraseAgainstPattern(newMerged, gPat);
             if (
               newMerged.length === gPat.length &&
-              newCheck.mismatches.length < oldCheck.mismatches.length
+              (newCheck.mismatches.length <= oldCheck.mismatches.length || hasViolation)
             ) {
               currentGroupTexts[lIdx][gIdx] = newMerged;
             }
@@ -440,57 +523,100 @@ ${
         });
 
         currentEval = evaluateAccuracy(currentGroupTexts);
-      } catch {
-        break;
+        currentViolations = checkPerspectiveViolations(currentGroupTexts);
+      } catch (repairErr) {
+        console.warn('AI 定向微修逾時或跳過，立即切換至本地高精度詞庫完成最終潤飾：', repairErr);
       }
     }
 
-    // Stage 3: 若 AI 修復後仍有未完全協音的殘餘區塊，由本地 100% 驗證詞庫進行智能語意槽位兜底替換
-    if (currentEval.errorDetails.length > 0) {
-      currentEval.errorDetails.forEach((err) => {
-        const { lineIdx, groupIdx, targetPattern } = err;
-        let verifiedCandidates = getVerifiedCandidatesForGroupPattern(
-          targetPattern,
-          24,
-          true,
-          themeContext
-        );
+    // Stage 3: 高保真字級/詞級本地 100% 協音補全（0.001 秒，優先保留 AI 原創好詞，僅替換有瑕疵的單字）
+    const allPendingGroupIssues = new Set<string>();
+    currentEval.errorDetails.forEach((e) => allPendingGroupIssues.add(`${e.lineIdx}-${e.groupIdx}`));
+    currentViolations.forEach((v) => allPendingGroupIssues.add(`${v.lineIdx}-${v.groupIdx}`));
 
-        if (perspective === 'congregational') {
-          const privates = ['我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕'];
-          const filtered = verifiedCandidates.filter((c) => !privates.some((p) => c.includes(p)));
-          if (filtered.length > 0) verifiedCandidates = filtered;
-        } else if (perspective === 'narrative') {
-          const filtered = verifiedCandidates.filter((c) => !['我愛祢', '我深愛', '我渴慕', '牽我手'].some((p) => c.includes(p)));
-          if (filtered.length > 0) verifiedCandidates = filtered;
-        }
+    allPendingGroupIssues.forEach((key) => {
+      const [lStr, gStr] = key.split('-');
+      const lineIdx = parseInt(lStr, 10);
+      const groupIdx = parseInt(gStr, 10);
+      const targetPattern = lineSpecs[lineIdx]?.groupPatterns?.[groupIdx];
+      if (!targetPattern) return;
 
-        if (verifiedCandidates.length > 0) {
-          const existingGroup = existingLines[lineIdx]?.groups?.[groupIdx];
-          // 若有已鎖定的字 (🟢 locked)，優先篩選符合鎖定字之候選詞
-          const matchingCand = verifiedCandidates.find((cand) => {
-            const candChars = Array.from(cand);
-            if (candChars.length !== targetPattern.length) return false;
-            if (!existingGroup) return true;
-            return targetPattern.split('').every((_, tIdx) => {
-              const tok = existingGroup.tokens?.[tIdx];
-              if (tok && tok.status === 'locked' && tok.char && tok.char !== '＿') {
-                return candChars[tIdx] === tok.char;
-              }
-              return true;
-            });
-          });
+      const currentPhrase = currentGroupTexts[lineIdx]?.[groupIdx] || '';
+      const check = verifyPhraseAgainstPattern(currentPhrase, targetPattern);
 
-          if (matchingCand) {
-            currentGroupTexts[lineIdx][groupIdx] = matchingCand;
-          } else if (verifiedCandidates[0]) {
-            currentGroupTexts[lineIdx][groupIdx] = verifiedCandidates[0];
+      // A. 若字數相符且僅有 1~2 個字唔啱音，優先只替換那 1~2 個字，保留其餘所有良好字！
+      if (
+        currentPhrase.length === targetPattern.length &&
+        check.mismatches.length > 0 &&
+        check.mismatches.length <= 2
+      ) {
+        const charArray = Array.from(currentPhrase);
+        const existingGroup = existingLines[lineIdx]?.groups?.[groupIdx];
+
+        check.mismatches.forEach((m) => {
+          const tok = existingGroup?.tokens?.[m.index];
+          if (tok && tok.status === 'locked' && tok.char !== '＿') return; // 已鎖定字不修改
+
+          const validChars = VERIFIED_CANTONESE_WORSHIP_CHARS[m.expected] || [];
+          let candidateChars = validChars.map((c) => c.replace(/\(.*\)/, '')).filter(Boolean);
+
+          if (perspective === 'congregational') {
+            candidateChars = candidateChars.filter((c) => c !== '我');
           }
+
+          if (candidateChars.length > 0) {
+            charArray[m.index] = candidateChars[0];
+          }
+        });
+
+        const fixedPhrase = charArray.join('');
+        if (verifyPhraseAgainstPattern(fixedPhrase, targetPattern).isExactMatch) {
+          currentGroupTexts[lineIdx][groupIdx] = fixedPhrase;
+          return;
         }
-      });
-      // 重新計算最終協音準確率
-      currentEval = evaluateAccuracy(currentGroupTexts);
-    }
+      }
+
+      // B. 若單字替換未達標，從本地驗證詞庫中挑選與主題最吻合的完整協音詞組
+      let verifiedCandidates = getVerifiedCandidatesForGroupPattern(
+        targetPattern,
+        24,
+        true,
+        themeContext
+      );
+
+      if (perspective === 'congregational') {
+        const privates = ['我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕'];
+        const filtered = verifiedCandidates.filter((c) => !privates.some((p) => c.includes(p)));
+        if (filtered.length > 0) verifiedCandidates = filtered;
+      } else if (perspective === 'narrative') {
+        const filtered = verifiedCandidates.filter((c) => !['我愛祢', '我深愛', '我渴慕', '牽我手'].some((p) => c.includes(p)));
+        if (filtered.length > 0) verifiedCandidates = filtered;
+      }
+
+      if (verifiedCandidates.length > 0) {
+        const existingGroup = existingLines[lineIdx]?.groups?.[groupIdx];
+        const matchingCand = verifiedCandidates.find((cand) => {
+          const candChars = Array.from(cand);
+          if (candChars.length !== targetPattern.length) return false;
+          if (!existingGroup) return true;
+          return targetPattern.split('').every((_, tIdx) => {
+            const tok = existingGroup.tokens?.[tIdx];
+            if (tok && tok.status === 'locked' && tok.char && tok.char !== '＿') {
+              return candChars[tIdx] === tok.char;
+            }
+            return true;
+          });
+        });
+
+        if (matchingCand) {
+          currentGroupTexts[lineIdx][groupIdx] = matchingCand;
+        } else if (verifiedCandidates[0]) {
+          currentGroupTexts[lineIdx][groupIdx] = verifiedCandidates[0];
+        }
+      }
+    });
+
+    currentEval = evaluateAccuracy(currentGroupTexts);
 
     const lines = buildLyricLinesFromPatternsAndTexts(
       parsedPatternLines,
@@ -508,6 +634,7 @@ ${
         initialAccuracy: initialEval.accuracy,
         finalAccuracy: currentEval.accuracy,
         repairIterations: repairCount,
+        elapsedMs: Date.now() - startTime,
         totalChars: currentEval.totalChars,
         matchedChars: currentEval.matchedChars,
         repeatedWordWarnings: excessiveReps.map((e) => `${e.word} (${e.count}次)`),

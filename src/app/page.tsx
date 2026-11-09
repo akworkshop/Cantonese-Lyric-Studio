@@ -1301,7 +1301,9 @@ export default function CantoneseLyricStudioPage() {
         throw new Error(data.error || 'AI 生成失敗');
       }
       commitLinesUpdate(data.lines);
-      let toastMsg = `AI 主題生成完成（協音準確率 ${data.stats?.finalAccuracy ?? 100}%）`;
+      let toastMsg = `AI 填詞完成（協音率 ${data.stats?.finalAccuracy ?? 100}%${
+        data.stats?.elapsedMs ? `，耗時 ${(data.stats.elapsedMs / 1000).toFixed(1)}s` : ''
+      }）`;
       if (data.stats?.repeatedWordWarnings && data.stats.repeatedWordWarnings.length > 0) {
         toastMsg += `；提示：${data.stats.repeatedWordWarnings.join('、')} 出現超過 3 次`;
       }
