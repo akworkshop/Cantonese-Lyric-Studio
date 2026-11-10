@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   buildDynamicLexiconPrompt,
   buildLyricLinesFromPatternsAndTexts,
+  getCandidatesWithLockedConstraints,
   getVerifiedCandidatesForGroupPattern,
   normalizeTonePatternLine,
   parsePatternTextWithSections,
@@ -76,7 +77,13 @@ export async function POST(req: NextRequest) {
     const activePerspective =
       perspectiveGuidelines[perspective as SongPerspective] || perspectiveGuidelines.devotional;
 
-    // 整理每一行的結構與已鎖定 (🟢 locked) 的字詞約束
+    // 為全曲每一行、每一組預先精選 100% 協音的神學詞磚菜單（Inverted Candidate Menu）
+    const lineMenus: {
+      lineIndex: number;
+      groupMenus: { groupIdx: number; pattern: string; candidates: string[] }[];
+    }[] = [];
+
+    // 整理每一行的結構與已鎖定 (🟢 locked) 的字詞約束，並注入 100% 啱音詞磚菜單供 AI 精選
     const lineSpecs = parsedPatternLines.map((pLine, lIdx) => {
       const linePat = pLine.pattern;
       const section = pLine.section || '';
@@ -90,38 +97,71 @@ export async function POST(req: NextRequest) {
       const isBridge = /bridge|橋段/i.test(section);
 
       if (isVerse) {
-        sectionGuidance = '【本行任務：Verse 主歌敘事鋪陳】嚴禁一開頭就大喊副歌式的讚美口號（嚴禁寫「向祢敬拜、大能掌權、權柄大地」）！必須從具體生活處境、受造宇宙浩瀚、黑夜風浪或世人奔波尋求的真實場景切入鋪陳！';
+        sectionGuidance = '【本行任務：Verse 主歌敘事鋪陳】嚴禁一開頭就大喊副歌式的讚美口號！必須從具體處境、受造宇宙浩瀚、黑夜風浪或世人奔波尋求的真實場景切入鋪陳！';
       } else if (isChorus) {
-        sectionGuidance = `【本行任務：Chorus 副歌情感高潮】全曲情感最高峰！用最響亮洗練、全體齊聲宣揚的字句，強烈呼應歌名《${title}》與主題的核心大宣告！`;
+        sectionGuidance = `【本行任務：Chorus 副歌情感高潮】全曲情感最高峰！用最響亮洗練、全體齊聲宣揚的詞磚，強烈呼應歌名《${title}》與主題的核心大宣告！`;
       } else if (isBridge) {
         sectionGuidance = '【本行任務：Bridge 橋段轉折深化】推動信心轉折與決定性的立志跨越（如走出幽谷、十架光芒、定意跟隨）！';
       }
 
+      const groupMenus: { groupIdx: number; pattern: string; candidates: string[] }[] = [];
+
       const groupConstraintDescriptions = groupPatterns.map((gPat, gIdx) => {
         const existingGroup = existingLine?.groups?.[gIdx];
-        if (!existingGroup) {
-          return `第${gIdx + 1}組 [目標聲調: ${gPat}，共 ${gPat.length} 字]`;
+        const groupTokens =
+          existingGroup?.tokens ||
+          Array.from(gPat).map((t) => ({ expectedTone: t }));
+
+        let verifiedBricks = getCandidatesWithLockedConstraints(
+          groupTokens,
+          24,
+          true,
+          themeContext
+        );
+
+        if (perspective === 'congregational') {
+          const privates = ['我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕'];
+          const filtered = verifiedBricks.filter((c) => !privates.some((p) => c.includes(p)));
+          if (filtered.length >= 6) verifiedBricks = filtered;
+        } else if (perspective === 'narrative') {
+          const filtered = verifiedBricks.filter((c) => !['我愛祢', '我深愛', '我渴慕', '牽我手'].some((p) => c.includes(p)));
+          if (filtered.length >= 6) verifiedBricks = filtered;
         }
-        const lockedMask = Array.from(gPat)
-          .map((tone, tIdx) => {
-            const tok = existingGroup.tokens?.[tIdx];
-            if (tok && tok.status === 'locked' && tok.char && tok.char !== '＿') {
-              return tok.char;
-            }
-            return `_(${tone}聲)`;
-          })
-          .join('');
-        const hasLocked = existingGroup.tokens?.some((t) => t.status === 'locked');
-        return hasLocked
-          ? `第${gIdx + 1}組 [目標聲調: ${gPat}，固定鎖定模板: "${lockedMask}"]`
-          : `第${gIdx + 1}組 [目標聲調: ${gPat}，共 ${gPat.length} 字]`;
+
+        groupMenus.push({
+          groupIdx: gIdx,
+          pattern: gPat,
+          candidates: verifiedBricks,
+        });
+
+        const hasLocked = existingGroup?.tokens?.some((t) => t.status === 'locked');
+        const lockedMask = hasLocked
+          ? Array.from(gPat)
+              .map((tone, tIdx) => {
+                const tok = existingGroup?.tokens?.[tIdx];
+                return tok?.status === 'locked' && tok.char && tok.char !== '＿'
+                  ? tok.char
+                  : `_(${tone}聲)`;
+              })
+              .join('')
+          : '';
+
+        const candidateSample = verifiedBricks.slice(0, 14).join('、');
+
+        return `  • 第 ${gIdx + 1} 組 [目標聲調: ${gPat}，${gPat.length}字]${
+          hasLocked ? ` (鎖定模板: "${lockedMask}")` : ''
+        }:\n    👉 100% 啱音精選詞磚菜單：【${candidateSample}】`;
       });
+
+      lineMenus.push({ lineIndex: lIdx, groupMenus });
 
       return {
         lineIndex: lIdx,
         targetPattern: linePat,
         groupPatterns,
-        constraintText: `第 ${lIdx + 1} 行 ${section ? `【${section}】` : ''}(${linePat})：${groupConstraintDescriptions.join(' ＋ ')}${sectionGuidance ? `\n    👉 ${sectionGuidance}` : ''}`,
+        constraintText: `第 ${lIdx + 1} 行 ${section ? `【${section}】` : ''}(${linePat})：\n${groupConstraintDescriptions.join(
+          '\n'
+        )}${sectionGuidance ? `\n    💡 ${sectionGuidance}` : ''}`,
       };
     });
 
@@ -223,13 +263,14 @@ ${lexiconHint}
 【歌曲含意／想表達的故事（核心靈魂，每句歌詞必須緊扣此主題！）】：${meaning}
 【指定人稱視角（嚴格遵守，違者無效）】：${activePerspective.title}（${activePerspective.desc}）
 
-【各行 0243 數字譜與段落分工要求】：
-${lineSpecs.map((s) => s.constraintText).join('\n')}
+【各行 0243 數字譜與 100% 啱音精選詞磚菜單】：
+${lineSpecs.map((s) => s.constraintText).join('\n\n')}
 
-請務必緊扣「${title} — ${meaning}」的故事核心來構思全新的原創詩句：
-1. 每一行歌詞必須是一句完整、連貫、富有深意的詩歌長句，絕對不可拼湊無語法關聯的碎詞！
-2. 嚴格遵守人稱視角（若是會眾宣告模式，嚴禁使用單數「我」；主歌必須鋪陳描寫場景，副歌才齊聲宣告高潮）。
-3. 嚴格按照每行每組的字數與 0243 聲調選字，回傳 JSON。`;
+【大師級倒轉精選與組句要求】：
+1. 嚴格從每組提供的【100% 啱音精選詞磚菜單】中，挑選最契合《${title}》（${meaning}）的詞組！
+2. 每一行歌詞必須由選出的詞磚串聯成一句呼吸自然、主謂完整、意境深遠的詩歌長句，字句相連，絕不可碎詞堆砌！
+3. 嚴格遵守人稱視角（若是會眾宣告模式，嚴禁使用單數「我」；主歌必須鋪陳描寫場景，副歌才齊聲宣告高潮）。
+4. 依各組目標字數輸出 JSON。`;
 
     // 執行第一輪 LLM 生成（設置 5 秒超時，預留充足時間給本地審查與單次定向微修，杜絕 Vercel 504）
     let firstPass: LLMGenerateResponse | null = null;
@@ -238,7 +279,7 @@ ${lineSpecs.map((s) => s.constraintText).join('\n')}
         aiConfig,
         systemPrompt,
         userPrompt,
-        0.65,
+        0.5,
         5000
       );
     } catch (pass1Err) {
@@ -260,7 +301,16 @@ ${lineSpecs.map((s) => s.constraintText).join('\n')}
           }
           return cleanChars[tIdx] || '';
         });
-        return mergedChars.join('');
+        const phrase = mergedChars.join('');
+
+        // 檢驗 AI 選出的詞組是否 100% 協音
+        if (phrase.length === gPat.length && verifyPhraseAgainstPattern(phrase, gPat).isExactMatch) {
+          return phrase;
+        }
+
+        // 若 AI 脫稿寫出唔啱音的詞，直接從預選的 100% 協音詞磚菜單中選取最符合主題者，確保 100% 啱音且不碎字！
+        const fallbackCandidates = lineMenus[lIdx]?.groupMenus?.[gIdx]?.candidates || [];
+        return fallbackCandidates[0] || phrase;
       });
     });
 
@@ -554,12 +604,9 @@ ${errorNotes.join('\n\n')}
       if (check.isExactMatch && !hasViolation) return;
 
       // 從本地高精度神學協音詞庫中，選取 100% 吻合該音階且語意完整的整組好詞（如「萬民曙光」、「事奉永生」）
-      let verifiedCandidates = getVerifiedCandidatesForGroupPattern(
-        targetPattern,
-        24,
-        true,
-        themeContext
-      );
+      let verifiedCandidates =
+        lineMenus[lineIdx]?.groupMenus?.[groupIdx]?.candidates ||
+        getVerifiedCandidatesForGroupPattern(targetPattern, 24, true, themeContext);
 
       if (perspective === 'congregational') {
         const privates = ['我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕'];
