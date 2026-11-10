@@ -1190,6 +1190,17 @@ function isNaturalCombinedPhrase(left: string, right: string): boolean {
   if (combined.includes('主我心') || combined.includes('真主我心')) return false; // 倒錯語法
   if (combined.includes('神我主') || combined.includes('我主神')) return false;
 
+  // 8. 聖經歷史人物姓名禁止作為任意詞綴隨機拼接（如「恩光普照所羅門」、「受造萬象但以理」等文理不通之病句）
+  const BIBLICAL_PERSON_NAMES = new Set([
+    '約書亞', '迦勒', '摩西', '大衛', '亞伯拉罕', '亞伯蘭', '撒拉', '以撒',
+    '約瑟', '雅各', '以利亞', '以利沙', '但以理', '撒母耳', '所羅門',
+    '保羅', '彼得', '約翰', '馬利亞', '提摩太', '司提反', '路得', '以斯帖',
+    '施洗約翰', '歌利亞', '耶利哥',
+  ]);
+  if (BIBLICAL_PERSON_NAMES.has(left) || BIBLICAL_PERSON_NAMES.has(right)) {
+    return false;
+  }
+
   return true;
 }
 
