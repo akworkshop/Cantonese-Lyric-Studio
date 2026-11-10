@@ -1196,6 +1196,11 @@ function isNaturalCombinedPhrase(left: string, right: string): boolean {
   if (combined.includes('大水') && (praiseVerbs.some((v) => combined.includes(v)) || conditionalWords.some((w) => combined.includes(w)))) {
     return false;
   }
+  // 「大水」或「洪水」作為右半部時，左半部若非特定自然動態（如「翻騰」、「洶湧」），禁止隨意拼裝（徹底杜絕「若雲大水」、「頌揚大水」等怪詞）
+  if (right === '大水' || right === '洪水') {
+    const validFloodPrefixes = ['翻騰', '滔滔', '洶湧', '漫過', '縱有', '哪怕', '縱使'];
+    if (!validFloodPrefixes.includes(left)) return false;
+  }
 
   // 7. 嚴禁任何文理不通、生硬古怪的死板拼湊（例如「真主」、「我慕神」、「慕神」、「萬王」作為雙字）
   if (combined.includes('真主')) return false; // 「真主」非現代粵語基督教詩歌用語

@@ -45,6 +45,8 @@ import {
   LyricLine,
   LyricToken,
   TokenStatus,
+  GlobalThematicReview,
+  ThematicImprovement,
 } from '@/types/lyric';
 import {
   analyzeCharToken,
@@ -259,6 +261,10 @@ export default function CantoneseLyricStudioPage() {
   const [mobileTab, setMobileTab] = useState<'config' | 'editor'>('editor');
   const [showMobileMenuModal, setShowMobileMenuModal] = useState<boolean>(false);
   const [showDailySupportModal, setShowDailySupportModal] = useState<boolean>(false);
+  // 深度全局主題檢測與意境昇華審查狀態
+  const [isReviewingLyrics, setIsReviewingLyrics] = useState<boolean>(false);
+  const [thematicReview, setThematicReview] = useState<GlobalThematicReview | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
 
   // 📱 手機觸控左右滑動 (Swipe Left / Right) 切換「歌曲與0243譜」與「填詞畫布」
   const touchStartXRef = useRef<number | null>(null);
@@ -1315,6 +1321,116 @@ export default function CantoneseLyricStudioPage() {
     }
   };
 
+  // 全局主題檢測與意境昇華審查
+  const handleReviewLyrics = async () => {
+    if (
+      !lines ||
+      lines.length === 0 ||
+      lines.every((l) => l.groups.every((g) => g.tokens.every((t) => !t.char)))
+    ) {
+      showToast('請先填入或生成歌詞，再進行全局檢測');
+      return;
+    }
+    setErrorBanner(null);
+    setIsReviewingLyrics(true);
+    try {
+      const res = await fetch('/api/review-lyrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          meaning,
+          lines,
+          perspective,
+          aiConfig,
+        }),
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(`伺服器回應異常 (${res.status})，請確認網路或 API Key 設定`);
+      }
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || '全局檢測失敗');
+      }
+
+      setThematicReview(data);
+      setShowReviewModal(true);
+      showToast(`全局主題檢測完成！評分：${data.overallScore} 分`);
+    } catch (err: unknown) {
+      setErrorBanner(err instanceof Error ? err.message : '全局主題檢測時發生錯誤');
+    } finally {
+      setIsReviewingLyrics(false);
+    }
+  };
+
+  // 套用單一局部優化詞磚
+  const handleApplyImprovement = (lineIdx: number, groupIdx: number, newPhrase: string) => {
+    const chars = Array.from(newPhrase);
+    const nextLines = lines.map((line, lIdx) => {
+      if (lIdx !== lineIdx) return line;
+      return {
+        ...line,
+        groups: line.groups.map((group, gIdx) => {
+          if (gIdx !== groupIdx) return group;
+          return {
+            ...group,
+            tokens: group.tokens.map((tok, tIdx) => {
+              const newChar = chars[tIdx] || tok.char;
+              return analyzeCharToken(
+                newChar,
+                tok.expectedTone,
+                tIdx === group.tokens.length - 1,
+                tok.id,
+                tok.status
+              );
+            }),
+          };
+        }),
+      };
+    });
+    commitLinesUpdate(nextLines);
+    showToast(`已套用「${newPhrase}」`);
+  };
+
+  // 一鍵套用全部局部優化詞磚
+  const handleApplyAllImprovements = () => {
+    if (!thematicReview || !thematicReview.improvements.length) return;
+    let nextLines = [...lines];
+    for (const imp of thematicReview.improvements) {
+      const bestPhrase = imp.suggestedPhrases[0];
+      if (!bestPhrase) continue;
+      const chars = Array.from(bestPhrase);
+      nextLines = nextLines.map((line, lIdx) => {
+        if (lIdx !== imp.lineIndex) return line;
+        return {
+          ...line,
+          groups: line.groups.map((group, gIdx) => {
+            if (gIdx !== imp.groupIdx) return group;
+            return {
+              ...group,
+              tokens: group.tokens.map((tok, tIdx) => {
+                const newChar = chars[tIdx] || tok.char;
+                return analyzeCharToken(
+                  newChar,
+                  tok.expectedTone,
+                  tIdx === group.tokens.length - 1,
+                  tok.id,
+                  tok.status
+                );
+              }),
+            };
+          }),
+        };
+      });
+    }
+    commitLinesUpdate(nextLines);
+    setShowReviewModal(false);
+    showToast('✨ 已一鍵套用全部優化詞磚！全曲意境已昇華！');
+  };
+
   // 設定狀態（支援單字或整組）
   const handleSetStatus = (
     lineIdx: number,
@@ -2074,6 +2190,24 @@ export default function CantoneseLyricStudioPage() {
                 <span>用內建「我/祢」抒情詞庫填詞</span>
               </button>
 
+              <button
+                onClick={handleReviewLyrics}
+                disabled={isReviewingLyrics || lines.length === 0}
+                className="w-full py-2 px-4 rounded-lg bg-gradient-to-r from-amber-500/10 via-amber-500/15 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 text-amber-900 border border-amber-300/80 font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow-2xs disabled:opacity-50"
+              >
+                {isReviewingLyrics ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                    <span>AI 全局檢測意境中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>🧐 AI 全局主題檢測與昇華</span>
+                  </>
+                )}
+              </button>
+
               {/* ☕ 支持事工溫馨提示 */}
               <div className="pt-2 text-center space-y-1">
                 <a
@@ -2117,24 +2251,45 @@ export default function CantoneseLyricStudioPage() {
               <p className="text-xs text-zinc-500 mt-1 max-w-2xl">{meaning}</p>
             </div>
 
-            {/* 簡潔清楚的色塊圖例 */}
-            <div className="flex items-center gap-3 sm:gap-4 text-xs text-zinc-600 bg-white px-3 sm:px-3.5 py-2 rounded-xl border border-zinc-200 shadow-sm flex-wrap">
-              <span className="font-semibold text-zinc-900">
-                啱音率 {projectMetrics.accuracy}%
-              </span>
-              <span className="text-zinc-300">|</span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                鎖定 ({projectMetrics.lockedCount})
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-                重寫 ({projectMetrics.needsChangeCount})
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                唔啱音 ({projectMetrics.mismatchCount})
-              </span>
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              {/* 全局主題檢測按鈕 */}
+              <button
+                onClick={handleReviewLyrics}
+                disabled={isReviewingLyrics || lines.length === 0}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 sm:px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-amber-900 border border-amber-300/80 shadow-xs transition active:scale-95 disabled:opacity-50"
+              >
+                {isReviewingLyrics ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                    <span>檢測故事中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>🧐 全局主題檢測</span>
+                  </>
+                )}
+              </button>
+
+              {/* 簡潔清楚的色塊圖例 */}
+              <div className="flex items-center gap-3 sm:gap-4 text-xs text-zinc-600 bg-white px-3 sm:px-3.5 py-2 rounded-xl border border-zinc-200 shadow-sm flex-wrap">
+                <span className="font-semibold text-zinc-900">
+                  啱音率 {projectMetrics.accuracy}%
+                </span>
+                <span className="text-zinc-300">|</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                  鎖定 ({projectMetrics.lockedCount})
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
+                  重寫 ({projectMetrics.needsChangeCount})
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                  唔啱音 ({projectMetrics.mismatchCount})
+                </span>
+              </div>
             </div>
           </div>
 
@@ -2744,6 +2899,144 @@ export default function CantoneseLyricStudioPage() {
                 className="w-full py-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition"
               >
                 稍後再說（今日不再提醒）
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🧐 全局主題檢測與意境昇華 Modal */}
+      {showReviewModal && thematicReview && (
+        <div
+          onClick={() => setShowReviewModal(false)}
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-zinc-200 overflow-hidden animate-in zoom-in-95 duration-200"
+          >
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shadow-xs">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-zinc-900">
+                    全曲主題與起承轉合檢測報告
+                  </h3>
+                  <p className="text-[11px] text-zinc-500">
+                    深度評估歌詞是否帶出《{title || '無題'}》故事主題與起承轉合
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-200/60 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+              {/* 分數與主題摘要卡片 */}
+              <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50/80 via-white to-orange-50/50 border border-amber-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <Music className="w-3.5 h-3.5 text-amber-600" />
+                    全曲主題契合度評分
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white shadow-xs">
+                    {thematicReview.overallScore} / 100 分
+                  </span>
+                </div>
+                <p className="text-zinc-700 leading-relaxed text-xs">
+                  {thematicReview.themeSummary}
+                </p>
+              </div>
+
+              {/* 起承轉合分析 */}
+              <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5">
+                <div className="font-semibold text-zinc-800 flex items-center gap-1.5 text-xs">
+                  <span>📖 全曲起承轉合故事弧分析</span>
+                </div>
+                <p className="text-zinc-600 leading-relaxed text-[11px]">
+                  {thematicReview.storyArcCritique}
+                </p>
+              </div>
+
+              {/* 優化建議列表 */}
+              <div className="space-y-2.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-zinc-900 text-xs flex items-center gap-1.5">
+                    <span>💡 局部詞磚精修建議（共 {thematicReview.improvements.length} 處）</span>
+                  </span>
+                  {thematicReview.improvements.length > 0 && (
+                    <button
+                      onClick={handleApplyAllImprovements}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-[11px] flex items-center gap-1.5 shadow-xs transition active:scale-95"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span>✨ 一鍵套用全部建議</span>
+                    </button>
+                  )}
+                </div>
+
+                {thematicReview.improvements.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-center">
+                    🎉 太棒了！全曲歌詞各行主謂通暢、文理契合，已充分展現歌曲主題！
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {thematicReview.improvements.map((imp, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3.5 rounded-xl bg-white border border-zinc-200 shadow-2xs space-y-2"
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-zinc-700">
+                            第 {imp.lineIndex + 1} 行 · 第 {imp.groupIdx + 1} 組（音階：{imp.targetPattern}）
+                          </span>
+                          <span className="text-zinc-400 font-mono">原詞：「{imp.currentPhrase}」</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 bg-zinc-50 p-2 rounded-lg leading-relaxed">
+                          🔍 <strong className="text-zinc-700">診斷原因：</strong>{imp.reason}
+                        </p>
+                        <div className="space-y-1.5 pt-0.5">
+                          <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                            點擊可立即替換為 100% 啱音好詞：
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {imp.suggestedPhrases.map((phrase, pIdx) => (
+                              <button
+                                key={pIdx}
+                                onClick={() => handleApplyImprovement(imp.lineIndex, imp.groupIdx, phrase)}
+                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-medium text-xs flex items-center gap-1 transition active:scale-95 group"
+                              >
+                                <span>{phrase}</span>
+                                <Check className="w-3 h-3 text-amber-600 opacity-60 group-hover:opacity-100" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between">
+              <span className="text-[11px] text-zinc-400">
+                所有推薦詞組均已通過 0243 協音驗證，替換後自動保證 100% 啱音。
+              </span>
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="px-4 py-2 rounded-lg bg-zinc-200 hover:bg-zinc-300 text-zinc-800 font-medium text-xs transition"
+              >
+                關閉
               </button>
             </div>
           </div>

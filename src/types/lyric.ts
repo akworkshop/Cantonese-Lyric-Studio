@@ -71,3 +71,20 @@ export interface AIProviderConfig {
   enableAutoRepair: boolean;  // 是否啟用本地字典驗證後的 AI 自動修正迴圈 (極大提升準確率)
   repairMaxRetries: number;   // 自動修正最大重試次數 (1~3)
 }
+
+export interface ThematicImprovement {
+  lineIndex: number;
+  groupIdx: number;
+  currentPhrase: string;
+  targetPattern: string;
+  reason: string;
+  suggestedPhrases: string[];
+}
+
+export interface GlobalThematicReview {
+  overallScore: number;
+  themeSummary: string;
+  storyArcCritique: string;
+  improvements: ThematicImprovement[];
+}
+
