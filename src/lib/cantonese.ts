@@ -141,6 +141,12 @@ const THEOLOGICAL_JYUTPING_OVERRIDES: Record<string, string[]> = {
   跨: ['kwaa1', 'kwaa3'],
   旦: ['daan6', 'daan3'],
   罕: ['hon3', 'hon2'],
+  柱: ['cyu5'],
+  眼: ['ngaan5'],
+  免: ['min5'],
+  引: ['jan5'],
+  曙: ['cyu5', 'syu5'],
+  領: ['ling5'],
 };
 
 /**
@@ -311,7 +317,7 @@ export function evaluateVocalErgonomics(
 
 /**
  * 填詞實務專屬 0243 聲階覆寫表
- * - 「我、你、祢、美」在粵語詩歌填詞實務中歸入 4 聲（次高音）
+ * - 「我、你、祢、美、永、柱、眼、免、引、曙、領」等常用字在粵語詩歌填詞實務中歸入 4 聲（次高音）
  * - 「更」字為破音字：
  *    - 作副詞「更加」（如：更深、更高、更愛、更加）讀 gang3（陰去，歸入 4 聲）
  *    - 作動詞「更新/更改」（如：更新、更改、更替）讀 gang1（陰平，歸入 3 聲）
@@ -355,6 +361,13 @@ const CUSTOM_0243_TONE_OVERRIDES: Record<string, string> = {
   你: '4',
   祢: '4',
   美: '4',
+  永: '4',
+  柱: '4',
+  眼: '4',
+  免: '4',
+  引: '4',
+  曙: '4',
+  領: '4',
 };
 
 /**
@@ -805,18 +818,18 @@ export const VERIFIED_CANTONESE_WORSHIP_CHARS: Record<string, string[]> = {
   '2': [
     '在(zoi6)', '患(waan6)', '難(naan6)', '懼(geoi6)', '大(daai6)', '是(si6)',
     '願(jyun6)', '伴(bun6)', '用(jung6)', '共(gung6)', '為(wai6)', '望(mong6)',
-    '仰(joeng5)', '永(wing5)', '耀(jiu6)', '路(lou6)', '地(dei6)',
+    '仰(joeng5)', '耀(jiu6)', '路(lou6)', '地(dei6)',
     '道(dou6)', '步(bou6)', '服(fuk6)', '十(sap6)', '贖(zuk6)', '父(fu6)',
     '命(ming6)', '樂(lok6)', '頌(zung6)', '順(seon6)', '義(ji6)', '善(sin6)',
     '護(wu6)', '導(dou6)', '待(doi6)', '罪(zeoi6)', '淚(leoi6)', '夜(je6)',
-    '日(jat6)', '力(lik6)', '活(wut6)', '領(ling5)', '引(jan5)', '慕(mou6)',
+    '日(jat6)', '力(lik6)', '活(wut6)', '慕(mou6)',
     '萬(maan6)', '但(daan6)', '受(sau6)', '定(ding6)', '靜(zing6)', '念(nim6)',
     '話(waa6)', '近(gan6)', '盛(sing6)', '謝(ze6)', '佑(jau6)', '裡(leoi5)',
     '浪(long6)', '岸(ngon6)', '雨(jyu5)', '暖(nyun5)', '夢(mung6)', '渡(dou6)',
     '漸(zim6)', '未(mei6)', '漫(maan6)', '座(zo6)', '暴(bou6)', '著(zoek6)',
   ],
   '4': [
-    '我(ngo5->4)', '你(nei5->4)', '祢(nei5->4)', '美(mei5->4)', '更(gang3)', '怕(paa3)', '困(kwan3)', '勝(sing3)',
+    '我(ngo5->4)', '你(nei5->4)', '祢(nei5->4)', '美(mei5->4)', '永(wing5->4)', '柱(cyu5->4)', '眼(ngaan5->4)', '免(min5->4)', '引(jan5->4)', '曙(cyu5->4)', '領(ling5->4)', '更(gang3)', '怕(paa3)', '困(kwan3)', '勝(sing3)',
     '愛(ngoi3)', '信(seon3)', '靠(kaau3)', '向(hoeng3)', '敬(ging3)', '拜(baai3)',
     '讚(zaan3)', '看(hon3)', '唱(coeng3)', '救(gau3)', '聖(sing3)', '盼(paan3)',
     '賜(ci3)', '照(ziu3)', '獻(hin3)', '見(gin3)', '證(zing3)', '進(zeon3)',
