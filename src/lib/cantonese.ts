@@ -1172,6 +1172,16 @@ function isNaturalCombinedPhrase(left: string, right: string): boolean {
     return false;
   }
 
+  // 6b. 條件與假設連詞（若是/如果/倘若）禁止與自然名詞生硬組裝（如「若是亮光」、「若非大水」）
+  const conditionalWords = ['若是', '如果', '倘若', '假若', '除非', '若非', '若不', '只要'];
+  const bareObjects = ['亮光', '大水', '風暴', '黑夜', '幽谷', '大地', '宇宙', '滄海', '江河'];
+  if (conditionalWords.includes(left) && bareObjects.includes(right)) {
+    return false;
+  }
+  if (combined.includes('大水') && (praiseVerbs.some((v) => combined.includes(v)) || conditionalWords.some((w) => combined.includes(w)))) {
+    return false;
+  }
+
   // 7. 嚴禁任何文理不通、生硬古怪的死板拼湊（例如「真主」、「我慕神」、「慕神」、「萬王」作為雙字）
   if (combined.includes('真主')) return false; // 「真主」非現代粵語基督教詩歌用語
   if (combined.includes('慕神') || combined.includes('我慕')) return false; // 「我慕神」不合粵語語法，應用「愛慕神」、「渴慕神」或「渴慕祢」
@@ -1266,8 +1276,8 @@ export function getVerifiedCandidatesForGroupPattern(
           ? getVerifiedCandidatesForGroupPattern(rightPat, 16, randomize, themeText)
           : [];
 
-      const leftWords = maybeShuffle(leftRaw).slice(0, 22);
-      const rightWords = maybeShuffle(rightRaw).slice(0, 22);
+      const leftWords = maybeShuffle(leftRaw).slice(0, 36);
+      const rightWords = maybeShuffle(rightRaw).slice(0, 36);
 
       for (const lw of leftWords) {
         if (leftLen === 1 && !ALLOWED_SINGLE_PREFIX.has(lw)) continue;
@@ -1285,12 +1295,12 @@ export function getVerifiedCandidatesForGroupPattern(
           ) {
             seen.add(combined);
             combinedCandidates.push(combined);
-            if (exactCandidates.length + combinedCandidates.length >= Math.max(limit * 3, 45)) {
+            if (exactCandidates.length + combinedCandidates.length >= Math.max(limit * 2, 80)) {
               break;
             }
           }
         }
-        if (exactCandidates.length + combinedCandidates.length >= Math.max(limit * 3, 45)) {
+        if (exactCandidates.length + combinedCandidates.length >= Math.max(limit * 2, 80)) {
           break;
         }
       }

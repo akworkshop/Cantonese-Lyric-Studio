@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 
         let verifiedBricks = getCandidatesWithLockedConstraints(
           groupTokens,
-          24,
+          80,
           true,
           themeContext
         );
@@ -122,10 +122,10 @@ export async function POST(req: NextRequest) {
         if (perspective === 'congregational') {
           const privates = ['我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕'];
           const filtered = verifiedBricks.filter((c) => !privates.some((p) => c.includes(p)));
-          if (filtered.length >= 6) verifiedBricks = filtered;
+          if (filtered.length >= 8) verifiedBricks = filtered;
         } else if (perspective === 'narrative') {
           const filtered = verifiedBricks.filter((c) => !['我愛祢', '我深愛', '我渴慕', '牽我手'].some((p) => c.includes(p)));
-          if (filtered.length >= 6) verifiedBricks = filtered;
+          if (filtered.length >= 8) verifiedBricks = filtered;
         }
 
         groupMenus.push({
@@ -146,11 +146,12 @@ export async function POST(req: NextRequest) {
               .join('')
           : '';
 
-        const candidateSample = verifiedBricks.slice(0, 14).join('、');
+        const candidateSampleList = verifiedBricks.slice(0, 60);
+        const candidateSample = candidateSampleList.join('、');
 
         return `  • 第 ${gIdx + 1} 組 [目標聲調: ${gPat}，${gPat.length}字]${
           hasLocked ? ` (鎖定模板: "${lockedMask}")` : ''
-        }:\n    👉 100% 啱音精選詞磚菜單：【${candidateSample}】`;
+        }:\n    👉 100% 啱音精選詞磚菜單（共 ${candidateSampleList.length} 個候選供精選）：【${candidateSample}】`;
       });
 
       lineMenus.push({ lineIndex: lIdx, groupMenus });
@@ -184,12 +185,21 @@ export async function POST(req: NextRequest) {
 
 ### 核心大師級填詞鐵律（違者視為嚴重失敗）：
 
-0. **【靈魂最高鐵律：每一行（Line）必須是一句「呼吸連貫、主謂完整、深具意境」的詩歌長句，嚴禁碎詞硬拼！】**：
-   - ❌ **絕對嚴禁將一行歌詞寫成 2～3 個彼此毫無關聯的孤立成語或口號**（例如：「我心愛祢（停頓）我心確真（停頓）掌管世界」是極度生硬、語法斷裂的機器拼裝句，絕對禁止！）。
-   - ✅ **每一行必須先構思成一句意境完整的粵語詩句**！各組（groups）之間的空格只是旋律的換氣節奏點，全句的語法、動賓關係與故事畫面必須一氣呵成！
-   - 提示中的 0243 詞組僅作為「聲調音階結構參考」，**嚴格禁止直接把提示詞逐個照搬拼裝成句！**
-   - 每一首詩歌必須根據用戶輸入的【歌曲名稱】與【歌曲含意／想表達的故事】構思專屬的意境與文字！
-   - 若用戶寫的是「創造天地萬物，掌管所有的主，是我們力量的泉源」，主歌必須生動描繪宇宙穹蒼、受造萬象、世人渺小尋求，**絕不可退化成千篇一律的「我心愛祢、向祢敬拜」**！
+0. **【靈魂最高鐵律：全曲全局故事弧（起承轉合）與行內呼吸連貫，絕不可孤立拼湊！】**：
+   - 🎯 **你不是在填寫獨立孤立的句子，你是在執導一首完整的敬拜詩歌長卷！**
+   - ❌ **絕對嚴禁各行各自為政、前後矛盾或前言不對後語！** 每一行都必須承接上一行的情感與畫面：
+     - **第 1 行【起 - 處境或宏觀】**：奠定具體時空氛圍（受造宇宙／黑夜尋求／真實處境／晨光破曉），絕不一開頭就空喊副歌大口號！
+     - **第 2 行【承 - 救恩與作為】**：承接第 1 行處境，深化神聖同在、基督十架救恩或溫柔安慰引導；
+     - **第 3 行【轉 - 信心與跨越】**：心靈轉折點，在風浪或軟弱中定意仰望、立志跟隨、信心跨越；
+     - **第 4 行【合 - 讚美與宣告】**：情感全面爆發，全心讚頌主恩，齊聲宣揚基督掌權直到永遠！
+   - ✅ **一行內的各組詞磚必須串聯成主謂完整、深具意境的詩歌長句**！嚴禁碎詞硬拼或口號堆疊。
+
+1. **【鐵律：全曲絕對零重複（Zero Word Repetition，詞彙豐富度）】**：
+   - ❌ **全曲任何 2～4 字的實詞組（如「心讚美」、「聲高唱」、「道成肉身」、「恩翅下」等），全曲絕對嚴禁重複出現超過 1 次！**
+   - 示例：如果第 1 行挑選了「心讚美」，後續第 2、3、4 行**絕對嚴禁再選「心讚美」**！必須改用菜單中的「真盼望」、「深愛慕」、「彰顯愛」、「高唱頌」等！
+   - 描寫讚美：輪流使用「稱頌」、「歌唱」、「高唱」、「頌揚」、「敬拜」、「宣揚」；
+   - 描寫恩惠：輪流使用「慈愛」、「厚恩」、「真光」、「恩惠」、「眷顧」、「信實」；
+   - 善用每組提供的大量候選詞磚，展現豐富多元的文學修養，杜絕重複單調！
 
 1. **【最高鐵律：嚴禁文法倒錯、拼湊怪句、尾部強塞贅字與腰斬專有名詞（絕不夾硬放字）】**：
    - **零容忍夾硬砌字與尾部強行墊字**：
@@ -266,11 +276,13 @@ ${lexiconHint}
 【各行 0243 數字譜與 100% 啱音精選詞磚菜單】：
 ${lineSpecs.map((s) => s.constraintText).join('\n\n')}
 
-【大師級倒轉精選與組句要求】：
-1. 嚴格從每組提供的【100% 啱音精選詞磚菜單】中，挑選最契合《${title}》（${meaning}）的詞組！
-2. 每一行歌詞必須由選出的詞磚串聯成一句呼吸自然、主謂完整、意境深遠的詩歌長句，字句相連，絕不可碎詞堆砌！
-3. 嚴格遵守人稱視角（若是會眾宣告模式，嚴禁使用單數「我」；主歌必須鋪陳描寫場景，副歌才齊聲宣告高潮）。
-4. 依各組目標字數輸出 JSON。`;
+【大師級全曲總導演精選與寫作要求】：
+1. 🎯【全曲起承轉合宏觀連貫】：整首歌必須是一篇完整、通順、連貫的信仰故事長卷！第 1 行鋪陳 ➔ 第 2 行推進 ➔ 第 3 行轉折 ➔ 第 4 行高潮宣告，前後文脈絡緊密相扣，絕非每一行孤立拼湊！
+2. 🚫【全曲絕對零重複】：任何 2～4 字詞組全曲絕對嚴禁重複出現超過 1 次！若前面某行選了某詞（如「心讚美」），後續各行絕對嚴禁再選，必須從菜單中挑選不同詞磚！
+3. 💎【嚴格選自 100% 啱音菜單】：嚴格從每組提供的【100% 啱音精選詞磚菜單】（共數十個候選）中，挑選最契合《${title}》（${meaning}）的詞組！
+4. 🌊【行內呼吸自然連貫】：每一行歌詞串聯起來必須是一句主謂完整、文理自然的粵語詩句，絕不可碎詞堆砌！
+5. 嚴格遵守人稱視角【${activePerspective.title}】。
+6. 依各組目標字數輸出 JSON。`;
 
     // 執行第一輪 LLM 生成（設置 5 秒超時，預留充足時間給本地審查與單次定向微修，杜絕 Vercel 504）
     let firstPass: LLMGenerateResponse | null = null;
@@ -285,6 +297,8 @@ ${lineSpecs.map((s) => s.constraintText).join('\n\n')}
     } catch (pass1Err) {
       console.warn('AI 初稿生成逾時或異常，由本地神學詞庫無縫補全：', pass1Err);
     }
+
+    const usedPhrasesAcrossSong = new Set<string>();
 
     const currentGroupTexts: string[][] = lineSpecs.map((spec, lIdx) => {
       const foundLine =
@@ -302,15 +316,25 @@ ${lineSpecs.map((s) => s.constraintText).join('\n\n')}
           return cleanChars[tIdx] || '';
         });
         const phrase = mergedChars.join('');
+        const fallbackCandidates = lineMenus[lIdx]?.groupMenus?.[gIdx]?.candidates || [];
 
-        // 檢驗 AI 選出的詞組是否 100% 協音
-        if (phrase.length === gPat.length && verifyPhraseAgainstPattern(phrase, gPat).isExactMatch) {
+        // 檢驗 AI 選出的詞組是否 100% 協音且在全曲中尚未被使用過
+        const isExact = phrase.length === gPat.length && verifyPhraseAgainstPattern(phrase, gPat).isExactMatch;
+        const isRepeated = usedPhrasesAcrossSong.has(phrase);
+
+        if (isExact && !isRepeated) {
+          usedPhrasesAcrossSong.add(phrase);
           return phrase;
         }
 
-        // 若 AI 脫稿寫出唔啱音的詞，直接從預選的 100% 協音詞磚菜單中選取最符合主題者，確保 100% 啱音且不碎字！
-        const fallbackCandidates = lineMenus[lIdx]?.groupMenus?.[gIdx]?.candidates || [];
-        return fallbackCandidates[0] || phrase;
+        // 若 AI 脫稿寫出唔啱音的詞，或重複了前面各行已出現的詞組，從預選菜單中挑選第一個「全曲尚未被使用過」的啱音詞組！
+        const unusedFallback =
+          fallbackCandidates.find((cand) => !usedPhrasesAcrossSong.has(cand)) ||
+          fallbackCandidates[0] ||
+          phrase;
+
+        usedPhrasesAcrossSong.add(unusedFallback);
+        return unusedFallback;
       });
     });
 
@@ -606,7 +630,7 @@ ${errorNotes.join('\n\n')}
       // 從本地高精度神學協音詞庫中，選取 100% 吻合該音階且語意完整的整組好詞（如「萬民曙光」、「事奉永生」）
       let verifiedCandidates =
         lineMenus[lineIdx]?.groupMenus?.[groupIdx]?.candidates ||
-        getVerifiedCandidatesForGroupPattern(targetPattern, 24, true, themeContext);
+        getVerifiedCandidatesForGroupPattern(targetPattern, 80, true, themeContext);
 
       if (perspective === 'congregational') {
         const privates = ['我心', '我身', '我手', '我靈', '牽我', '撫我', '親近祢', '我愛祢', '我深愛', '我渴慕'];
@@ -619,23 +643,28 @@ ${errorNotes.join('\n\n')}
 
       if (verifiedCandidates.length > 0) {
         const existingGroup = existingLines[lineIdx]?.groups?.[groupIdx];
-        const matchingCand = verifiedCandidates.find((cand) => {
-          const candChars = Array.from(cand);
-          if (candChars.length !== targetPattern.length) return false;
-          if (!existingGroup) return true;
-          return targetPattern.split('').every((_, tIdx) => {
-            const tok = existingGroup.tokens?.[tIdx];
-            if (tok && tok.status === 'locked' && tok.char && tok.char !== '＿') {
-              return candChars[tIdx] === tok.char;
+        const matchingCand =
+          verifiedCandidates.find((cand) => {
+            if (usedPhrasesAcrossSong.has(cand) && currentGroupTexts[lineIdx]?.[groupIdx] !== cand) {
+              return false;
             }
-            return true;
-          });
-        });
+            const candChars = Array.from(cand);
+            if (candChars.length !== targetPattern.length) return false;
+            if (!existingGroup) return true;
+            return targetPattern.split('').every((_, tIdx) => {
+              const tok = existingGroup.tokens?.[tIdx];
+              if (tok && tok.status === 'locked' && tok.char && tok.char !== '＿') {
+                return candChars[tIdx] === tok.char;
+              }
+              return true;
+            });
+          }) ||
+          verifiedCandidates.find((cand) => !usedPhrasesAcrossSong.has(cand)) ||
+          verifiedCandidates[0];
 
         if (matchingCand) {
+          usedPhrasesAcrossSong.add(matchingCand);
           currentGroupTexts[lineIdx][groupIdx] = matchingCand;
-        } else if (verifiedCandidates[0]) {
-          currentGroupTexts[lineIdx][groupIdx] = verifiedCandidates[0];
         }
       }
     });
