@@ -132,7 +132,7 @@ const THEOLOGICAL_JYUTPING_OVERRIDES: Record<string, string[]> = {
   應: ['jing3', 'jing1'],
   許: ['heoi2'],
   刻: ['hak1'],
-  名: ['ming4', 'meng2'],
+  名: ['ming4'],
   字: ['zi6'],
   著: ['zoek6', 'zyu3'],
   縱: ['zung3'],
@@ -368,6 +368,7 @@ const CUSTOM_0243_TONE_OVERRIDES: Record<string, string> = {
   引: '4',
   曙: '4',
   領: '4',
+  名: '0',
 };
 
 /**
@@ -1301,8 +1302,19 @@ export function getVerifiedCandidatesForGroupPattern(
           ? getVerifiedCandidatesForGroupPattern(rightPat, 16, randomize, themeText)
           : [];
 
-      const leftWords = maybeShuffle(leftRaw).slice(0, 36);
-      const rightWords = maybeShuffle(rightRaw).slice(0, 36);
+      let sortedLeft = leftRaw;
+      let sortedRight = rightRaw;
+      if (themeText.trim()) {
+        sortedLeft = [...leftRaw].sort(
+          (a, b) => scorePhraseByTheme(b, themeText) - scorePhraseByTheme(a, themeText)
+        );
+        sortedRight = [...rightRaw].sort(
+          (a, b) => scorePhraseByTheme(b, themeText) - scorePhraseByTheme(a, themeText)
+        );
+      }
+
+      const leftWords = maybeShuffle(sortedLeft.slice(0, 50)).slice(0, 36);
+      const rightWords = maybeShuffle(sortedRight.slice(0, 50)).slice(0, 36);
 
       for (const lw of leftWords) {
         if (leftLen === 1 && !ALLOWED_SINGLE_PREFIX.has(lw)) continue;
