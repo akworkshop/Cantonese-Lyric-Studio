@@ -265,6 +265,12 @@ export default function CantoneseLyricStudioPage() {
   const [isReviewingLyrics, setIsReviewingLyrics] = useState<boolean>(false);
   const [thematicReview, setThematicReview] = useState<GlobalThematicReview | null>(null);
   const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
+  const [round2Notice, setRound2Notice] = useState<{
+    status: 'idle' | 'running' | 'done' | 'error';
+    changes: { lineIndex: number; groupIdx: number; from: string; to: string }[];
+    score?: number;
+    errorMessage?: string;
+  }>({ status: 'idle', changes: [] });
 
   // 📱 手機觸控左右滑動 (Swipe Left / Right) 切換「歌曲與0243譜」與「填詞畫布」
   const touchStartXRef = useRef<number | null>(null);
@@ -1310,6 +1316,7 @@ export default function CantoneseLyricStudioPage() {
       // 立即關閉全螢幕生成遮罩，讓用戶親眼看見第 1 輪初稿出現在畫布上
       setIsGeneratingLyrics(false);
       setIsReviewingLyrics(true);
+      setRound2Notice({ status: 'running', changes: [] });
       showToast('🪄 第 1 輪初稿完成！正在進行第 2 輪全局意境檢核與自動修正...');
 
       // 🚀 Stage 2: 稍微停頓後發起獨立 HTTP Request 進行全局主題檢核與自動修正
@@ -1334,11 +1341,16 @@ export default function CantoneseLyricStudioPage() {
 
           if (reviewData.improvements && reviewData.improvements.length > 0) {
             let nextLines: LyricLine[] = [...(data.lines as LyricLine[])];
-            const changedSummaries: string[] = [];
+            const appliedChanges: { lineIndex: number; groupIdx: number; from: string; to: string }[] = [];
             for (const imp of reviewData.improvements) {
               const bestPhrase = imp.suggestedPhrases[0];
               if (!bestPhrase) continue;
-              changedSummaries.push(`「${imp.currentPhrase}」➔「${bestPhrase}」`);
+              appliedChanges.push({
+                lineIndex: imp.lineIndex,
+                groupIdx: imp.groupIdx,
+                from: imp.currentPhrase,
+                to: bestPhrase,
+              });
               const chars = Array.from(bestPhrase);
               nextLines = nextLines.map((line: LyricLine, lIdx: number) => {
                 if (lIdx !== imp.lineIndex) return line;
@@ -1349,7 +1361,10 @@ export default function CantoneseLyricStudioPage() {
                     return {
                       ...group,
                       tokens: group.tokens.map((tok: LyricToken, tIdx: number) => {
-                        const newChar = String(chars[tIdx] || tok.char || '');
+                        const newChar =
+                          tok.status === 'locked'
+                            ? tok.char
+                            : String(chars[tIdx] || tok.char || '');
                         return analyzeCharToken(
                           newChar,
                           tok.expectedTone,
@@ -1364,21 +1379,46 @@ export default function CantoneseLyricStudioPage() {
               });
             }
             commitLinesUpdate(nextLines);
-            const previewText = changedSummaries.slice(0, 2).join('、');
+            setRound2Notice({
+              status: 'done',
+              changes: appliedChanges,
+              score: reviewData.overallScore,
+            });
             showToast(
-              `✨ 第 2 輪自動優化完成（${reviewData.overallScore}分）！已改寫 ${previewText} 等 ${reviewData.improvements.length} 處，可點「🧐 全局主題檢測」睇報告！`
+              `✅ 第 2 輪全局校對已完成！（${reviewData.overallScore}分）已自動升級 ${appliedChanges.length} 處歌詞`
             );
           } else {
+            setRound2Notice({
+              status: 'done',
+              changes: [],
+              score: reviewData.overallScore,
+            });
             showToast(
-              `✨ 第 2 輪全局檢測通過（${reviewData.overallScore}分）！全曲緊扣主題，一氣呵成！`
+              `✅ 第 2 輪全局檢測已完成（${reviewData.overallScore}分）！全曲緊扣主題，無需修改！`
             );
           }
         } else {
-          showToast('第 1 輪初稿已完成（第 2 輪自動檢測暫時繁忙，可稍後手動點擊「🧐 全局主題檢測」）');
+          let errText = `HTTP ${reviewRes.status}`;
+          try {
+            const errJson = await reviewRes.json();
+            if (errJson?.error) errText = errJson.error;
+          } catch {}
+          setRound2Notice({
+            status: 'error',
+            changes: [],
+            errorMessage: errText,
+          });
+          showToast('⚠️ 第 2 輪自動檢測暫時繁忙，可點擊上方橫幅「立即重試第 2 輪」');
         }
       } catch (reviewErr) {
-        console.warn('第二輪自動校對略過：', reviewErr);
-        showToast('第 1 輪初稿已完成（可點擊「🧐 全局主題檢測」進行手動檢閱）');
+        const msg = reviewErr instanceof Error ? reviewErr.message : '網路連線或超時異常';
+        console.warn('第二輪自動校對異常：', reviewErr);
+        setRound2Notice({
+          status: 'error',
+          changes: [],
+          errorMessage: msg,
+        });
+        showToast('⚠️ 第 2 輪自動檢測逾時，可點擊上方橫幅立即重試');
       } finally {
         setIsReviewingLyrics(false);
       }
@@ -2362,7 +2402,7 @@ export default function CantoneseLyricStudioPage() {
           </div>
 
           {/* 🚀 第 2 輪自動全局檢閱進度與結果橫幅 */}
-          {isReviewingLyrics && (
+          {(isReviewingLyrics || round2Notice.status === 'running') && (
             <div className="max-w-5xl mx-auto mb-4 p-3.5 rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-300 shadow-sm flex items-center justify-between gap-3 animate-pulse">
               <div className="flex items-center gap-2.5 text-amber-950 text-xs sm:text-sm font-semibold">
                 <RefreshCw className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
@@ -2371,25 +2411,68 @@ export default function CantoneseLyricStudioPage() {
             </div>
           )}
 
-          {!isReviewingLyrics && thematicReview && (
-            <div className="max-w-5xl mx-auto mb-4 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2 text-emerald-900">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          {!isReviewingLyrics && round2Notice.status === 'error' && (
+            <div className="max-w-5xl mx-auto mb-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 text-rose-900">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                 <span className="font-semibold">
-                  第 2 輪全局校對報告（契合度：{thematicReview.overallScore} / 100 分）
-                </span>
-                <span className="text-emerald-700 hidden sm:inline">
-                  {thematicReview.improvements.length > 0
-                    ? `· 已自動優化／建議 ${thematicReview.improvements.length} 處意境詞磚`
-                    : '· 全曲起承轉合流暢貼題'}
+                  第 2 輪自動檢閱未能完成（{round2Notice.errorMessage || '伺服器繁忙或超時'}），畫布目前為第 1 輪初稿。
                 </span>
               </div>
               <button
-                onClick={() => setShowReviewModal(true)}
-                className="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-medium text-[11px] transition shadow-2xs"
+                onClick={handleReviewLyrics}
+                className="px-3 py-1.5 rounded-lg bg-white hover:bg-rose-100 text-rose-800 border border-rose-300 font-semibold text-[11px] transition shadow-2xs"
               >
-                查看校對詳情與再挑詞 👉
+                🔄 立即重試第 2 輪檢閱
               </button>
+            </div>
+          )}
+
+          {!isReviewingLyrics && (round2Notice.status === 'done' || thematicReview) && (
+            <div className="max-w-5xl mx-auto mb-4 p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 shadow-2xs space-y-2 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-emerald-950">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-bold">
+                    ✅ 第 2 輪全局檢閱已完成！（契合度：{round2Notice.score ?? thematicReview?.overallScore ?? 90} / 100 分）
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {thematicReview && (
+                    <button
+                      onClick={() => setShowReviewModal(true)}
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-medium text-[11px] transition shadow-2xs"
+                    >
+                      查看完整報告與再挑詞 👉
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setRound2Notice({ status: 'idle', changes: [] })}
+                    className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-100 transition"
+                    title="收起提示"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {round2Notice.changes.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-emerald-900 pt-0.5">
+                  <span className="font-semibold text-emerald-800">已自動修改 {round2Notice.changes.length} 處：</span>
+                  {round2Notice.changes.map((c, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded-md bg-white border border-emerald-200 font-medium shadow-2xs"
+                    >
+                      第{c.lineIndex + 1}行：「<span className="line-through text-zinc-400">{c.from}</span>」➔「<span className="text-emerald-700 font-bold">{c.to}</span>」
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-emerald-800">
+                  AI 逐行檢閱整首歌詞後，確認第 1 輪版本已貼合《{title || '主題'}》且流暢通順，無需強制替換。你仍可點右側按鈕查看詳細評語或手動微調。
+                </p>
+              )}
             </div>
           )}
 

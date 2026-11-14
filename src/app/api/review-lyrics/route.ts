@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
           }
           return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${
             g.pattern
-          }) 可選 100% 啱音好詞：【${g.candidates.slice(0, 20).join('、')}】`;
+          }) 可選 100% 啱音好詞：【${g.candidates.slice(0, 12).join('、')}】`;
         });
         return `第 ${l.lineIndex + 1} 行：\n${groupLines.join('\n')}`;
       })
@@ -163,7 +163,7 @@ ${groupOptionsText}
       systemPrompt,
       userPrompt,
       0.3,
-      7000
+      18000
     );
 
     // 嚴格驗證推薦詞是否 100% 協音
