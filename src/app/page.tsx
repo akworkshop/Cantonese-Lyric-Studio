@@ -267,10 +267,11 @@ export default function CantoneseLyricStudioPage() {
   const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
   const [round2Notice, setRound2Notice] = useState<{
     status: 'idle' | 'running' | 'done' | 'error';
+    roundCount: number;
     changes: { lineIndex: number; groupIdx: number; from: string; to: string }[];
     score?: number;
     errorMessage?: string;
-  }>({ status: 'idle', changes: [] });
+  }>({ status: 'idle', roundCount: 2, changes: [] });
 
   // 📱 手機觸控左右滑動 (Swipe Left / Right) 切換「歌曲與0243譜」與「填詞畫布」
   const touchStartXRef = useRef<number | null>(null);
@@ -1272,6 +1273,147 @@ export default function CantoneseLyricStudioPage() {
     showToast('已依歌曲主題與 CantonHymn 協音詞庫完成 100% 啱音組詞');
   };
 
+  // 通用多輪 AI 全局主題檢閱與自動修訂（支援第 2、3、4... 無限輪次迭代）
+  const runAutoRefineRound = async (
+    targetLines: LyricLine[],
+    roundNum: number,
+    initialDelayMs = 0
+  ) => {
+    if (
+      !targetLines ||
+      targetLines.length === 0 ||
+      targetLines.every((l) => l.groups.every((g) => g.tokens.every((t) => !t.char)))
+    ) {
+      showToast('請先填入或生成歌詞，再進行全局檢閱');
+      return;
+    }
+
+    setIsReviewingLyrics(true);
+    setRound2Notice({ status: 'running', roundCount: roundNum, changes: [] });
+
+    try {
+      if (initialDelayMs > 0) {
+        showToast(
+          `⏳ 第 ${roundNum - 1} 輪完成！稍候 ${(initialDelayMs / 1000).toFixed(1)} 秒冷卻頻率後，自動展開第 ${roundNum} 輪全局檢閱...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, initialDelayMs));
+      } else {
+        showToast(`🔍 正在進行第 ${roundNum} 輪 AI 全局檢閱與自動修訂...`);
+      }
+
+      const callReviewApi = () =>
+        fetch('/api/review-lyrics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            meaning,
+            lines: targetLines,
+            perspective,
+            aiConfig,
+          }),
+        });
+
+      let reviewRes = await callReviewApi();
+      // 若遇 AI 速率限制或暫時繁忙，自動等待 3 秒後重試一次
+      if (!reviewRes.ok) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        reviewRes = await callReviewApi();
+      }
+
+      if (reviewRes.ok) {
+        const reviewData = await reviewRes.json();
+        setThematicReview(reviewData);
+
+        if (reviewData.improvements && reviewData.improvements.length > 0) {
+          let nextLines: LyricLine[] = [...targetLines];
+          const appliedChanges: { lineIndex: number; groupIdx: number; from: string; to: string }[] = [];
+          for (const imp of reviewData.improvements) {
+            const bestPhrase = imp.suggestedPhrases[0];
+            if (!bestPhrase) continue;
+            appliedChanges.push({
+              lineIndex: imp.lineIndex,
+              groupIdx: imp.groupIdx,
+              from: imp.currentPhrase,
+              to: bestPhrase,
+            });
+            const chars = Array.from(bestPhrase);
+            nextLines = nextLines.map((line: LyricLine, lIdx: number) => {
+              if (lIdx !== imp.lineIndex) return line;
+              return {
+                ...line,
+                groups: line.groups.map((group, gIdx: number) => {
+                  if (gIdx !== imp.groupIdx) return group;
+                  return {
+                    ...group,
+                    tokens: group.tokens.map((tok: LyricToken, tIdx: number) => {
+                      const newChar =
+                        tok.status === 'locked'
+                          ? tok.char
+                          : String(chars[tIdx] || tok.char || '');
+                      return analyzeCharToken(
+                        newChar,
+                        tok.expectedTone,
+                        tIdx === group.tokens.length - 1,
+                        tok.id,
+                        tok.status
+                      );
+                    }),
+                  };
+                }),
+              };
+            });
+          }
+          commitLinesUpdate(nextLines);
+          setRound2Notice({
+            status: 'done',
+            roundCount: roundNum,
+            changes: appliedChanges,
+            score: reviewData.overallScore,
+          });
+          showToast(
+            `✅ 第 ${roundNum} 輪全局校對已完成！（${reviewData.overallScore}分）已自動升級 ${appliedChanges.length} 處歌詞`
+          );
+        } else {
+          setRound2Notice({
+            status: 'done',
+            roundCount: roundNum,
+            changes: [],
+            score: reviewData.overallScore,
+          });
+          showToast(
+            `✅ 第 ${roundNum} 輪全局檢測已完成（${reviewData.overallScore}分）！全曲緊扣主題，無需再修改！`
+          );
+        }
+      } else {
+        let errText = `HTTP ${reviewRes.status}`;
+        try {
+          const errJson = await reviewRes.json();
+          if (errJson?.error) errText = errJson.error;
+        } catch {}
+        setRound2Notice({
+          status: 'error',
+          roundCount: roundNum,
+          changes: [],
+          errorMessage: errText,
+        });
+        showToast(`⚠️ 第 ${roundNum} 輪自動檢測暫時繁忙（${errText}），可點擊橫幅重試`);
+      }
+    } catch (reviewErr) {
+      const msg = reviewErr instanceof Error ? reviewErr.message : '網路連線或超時異常';
+      console.warn(`第 ${roundNum} 輪自動校對異常：`, reviewErr);
+      setRound2Notice({
+        status: 'error',
+        roundCount: roundNum,
+        changes: [],
+        errorMessage: msg,
+      });
+      showToast(`⚠️ 第 ${roundNum} 輪自動檢測逾時，可點擊上方橫幅立即重試`);
+    } finally {
+      setIsReviewingLyrics(false);
+    }
+  };
+
   // AI 生成歌詞
   const handleAIGenerateLyrics = async () => {
     setErrorBanner(null);
@@ -1315,123 +1457,9 @@ export default function CantoneseLyricStudioPage() {
       commitLinesUpdate(data.lines);
       // 立即關閉全螢幕生成遮罩，讓用戶親眼看見第 1 輪初稿出現在畫布上
       setIsGeneratingLyrics(false);
-      setIsReviewingLyrics(true);
-      setRound2Notice({ status: 'running', changes: [] });
-      showToast('🪄 第 1 輪初稿完成！正在進行第 2 輪全局意境檢核與自動修正...');
 
-      // 🚀 Stage 2: 稍微停頓 2.5 秒冷卻 AI 頻率限制（避免連續請求觸發 429 / 繁忙），再發起第 2 輪全局主題檢核
-      // 每個 Request 各自獨立計時，徹底規避 Vercel 10 秒上限！
-      try {
-        showToast('⏳ 第 1 輪初稿完成！稍候 2.5 秒冷卻頻率後，自動展開第 2 輪全局檢閱...');
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-
-        const callReviewApi = () =>
-          fetch('/api/review-lyrics', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title,
-              meaning,
-              lines: data.lines,
-              perspective,
-              aiConfig,
-            }),
-          });
-
-        let reviewRes = await callReviewApi();
-        // 若遇 AI 速率限制或暫時繁忙，自動等待 3 秒後重試一次
-        if (!reviewRes.ok) {
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-          reviewRes = await callReviewApi();
-        }
-
-        if (reviewRes.ok) {
-          const reviewData = await reviewRes.json();
-          setThematicReview(reviewData);
-
-          if (reviewData.improvements && reviewData.improvements.length > 0) {
-            let nextLines: LyricLine[] = [...(data.lines as LyricLine[])];
-            const appliedChanges: { lineIndex: number; groupIdx: number; from: string; to: string }[] = [];
-            for (const imp of reviewData.improvements) {
-              const bestPhrase = imp.suggestedPhrases[0];
-              if (!bestPhrase) continue;
-              appliedChanges.push({
-                lineIndex: imp.lineIndex,
-                groupIdx: imp.groupIdx,
-                from: imp.currentPhrase,
-                to: bestPhrase,
-              });
-              const chars = Array.from(bestPhrase);
-              nextLines = nextLines.map((line: LyricLine, lIdx: number) => {
-                if (lIdx !== imp.lineIndex) return line;
-                return {
-                  ...line,
-                  groups: line.groups.map((group, gIdx: number) => {
-                    if (gIdx !== imp.groupIdx) return group;
-                    return {
-                      ...group,
-                      tokens: group.tokens.map((tok: LyricToken, tIdx: number) => {
-                        const newChar =
-                          tok.status === 'locked'
-                            ? tok.char
-                            : String(chars[tIdx] || tok.char || '');
-                        return analyzeCharToken(
-                          newChar,
-                          tok.expectedTone,
-                          tIdx === group.tokens.length - 1,
-                          tok.id,
-                          tok.status
-                        );
-                      }),
-                    };
-                  }),
-                };
-              });
-            }
-            commitLinesUpdate(nextLines);
-            setRound2Notice({
-              status: 'done',
-              changes: appliedChanges,
-              score: reviewData.overallScore,
-            });
-            showToast(
-              `✅ 第 2 輪全局校對已完成！（${reviewData.overallScore}分）已自動升級 ${appliedChanges.length} 處歌詞`
-            );
-          } else {
-            setRound2Notice({
-              status: 'done',
-              changes: [],
-              score: reviewData.overallScore,
-            });
-            showToast(
-              `✅ 第 2 輪全局檢測已完成（${reviewData.overallScore}分）！全曲緊扣主題，無需修改！`
-            );
-          }
-        } else {
-          let errText = `HTTP ${reviewRes.status}`;
-          try {
-            const errJson = await reviewRes.json();
-            if (errJson?.error) errText = errJson.error;
-          } catch {}
-          setRound2Notice({
-            status: 'error',
-            changes: [],
-            errorMessage: errText,
-          });
-          showToast('⚠️ 第 2 輪自動檢測暫時繁忙，可點擊上方橫幅「立即重試第 2 輪」');
-        }
-      } catch (reviewErr) {
-        const msg = reviewErr instanceof Error ? reviewErr.message : '網路連線或超時異常';
-        console.warn('第二輪自動校對異常：', reviewErr);
-        setRound2Notice({
-          status: 'error',
-          changes: [],
-          errorMessage: msg,
-        });
-        showToast('⚠️ 第 2 輪自動檢測逾時，可點擊上方橫幅立即重試');
-      } finally {
-        setIsReviewingLyrics(false);
-      }
+      // 🚀 Stage 2: 冷卻 2.5 秒後發起第 2 輪全局主題檢核與自動修正
+      await runAutoRefineRound(data.lines as LyricLine[], 2, 2500);
     } catch (err: unknown) {
       setErrorBanner(err instanceof Error ? err.message : '生成歌詞時發生錯誤');
     } finally {
@@ -2411,12 +2439,12 @@ export default function CantoneseLyricStudioPage() {
             </div>
           </div>
 
-          {/* 🚀 第 2 輪自動全局檢閱進度與結果橫幅 */}
+          {/* 🚀 第 N 輪自動全局檢閱進度與結果橫幅 */}
           {(isReviewingLyrics || round2Notice.status === 'running') && (
             <div className="max-w-5xl mx-auto mb-4 p-3.5 rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-300 shadow-sm flex items-center justify-between gap-3 animate-pulse">
               <div className="flex items-center gap-2.5 text-amber-950 text-xs sm:text-sm font-semibold">
                 <RefreshCw className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
-                <span>🔍 第 1 輪初稿已完成！AI 正在進行第 2 輪全局檢閱（檢查有否偏離主題、重複或生硬詞組，並自動升級）...</span>
+                <span>🔍 AI 正在進行第 {round2Notice.roundCount} 輪全局檢閱（掃描重複字眼、偏離主題或唔順暢詞組，並自動升級）...</span>
               </div>
             </div>
           )}
@@ -2426,14 +2454,14 @@ export default function CantoneseLyricStudioPage() {
               <div className="flex items-center gap-2 text-rose-900">
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                 <span className="font-semibold">
-                  第 2 輪自動檢閱未能完成（{round2Notice.errorMessage || '伺服器繁忙或超時'}），畫布目前為第 1 輪初稿。
+                  第 {round2Notice.roundCount} 輪自動檢閱未能完成（{round2Notice.errorMessage || '伺服器繁忙或超時'}）。
                 </span>
               </div>
               <button
-                onClick={handleReviewLyrics}
+                onClick={() => runAutoRefineRound(lines, round2Notice.roundCount || 2, 0)}
                 className="px-3 py-1.5 rounded-lg bg-white hover:bg-rose-100 text-rose-800 border border-rose-300 font-semibold text-[11px] transition shadow-2xs"
               >
-                🔄 立即重試第 2 輪檢閱
+                🔄 立即重試第 {round2Notice.roundCount || 2} 輪檢閱
               </button>
             </div>
           )}
@@ -2444,20 +2472,27 @@ export default function CantoneseLyricStudioPage() {
                 <div className="flex items-center gap-2 text-emerald-950">
                   <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span className="font-bold">
-                    ✅ 第 2 輪全局檢閱已完成！（契合度：{round2Notice.score ?? thematicReview?.overallScore ?? 90} / 100 分）
+                    ✅ 第 {round2Notice.roundCount} 輪全局檢閱已完成！（契合度：{round2Notice.score ?? thematicReview?.overallScore ?? 90} / 100 分）
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => runAutoRefineRound(lines, (round2Notice.roundCount || 2) + 1, 0)}
+                    className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] flex items-center gap-1 transition shadow-xs active:scale-95"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>繼續第 {(round2Notice.roundCount || 2) + 1} 輪 AI 檢閱修改</span>
+                  </button>
                   {thematicReview && (
                     <button
                       onClick={() => setShowReviewModal(true)}
                       className="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-medium text-[11px] transition shadow-2xs"
                     >
-                      查看完整報告與再挑詞 👉
+                      查看報告與再挑詞 👉
                     </button>
                   )}
                   <button
-                    onClick={() => setRound2Notice({ status: 'idle', changes: [] })}
+                    onClick={() => setRound2Notice({ status: 'idle', roundCount: 2, changes: [] })}
                     className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-100 transition"
                     title="收起提示"
                   >
@@ -3221,16 +3256,29 @@ export default function CantoneseLyricStudioPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="px-5 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between">
+            <div className="px-5 py-3 border-t border-zinc-200 bg-zinc-50 flex flex-wrap items-center justify-between gap-2">
               <span className="text-[11px] text-zinc-400">
                 所有推薦詞組均已通過 0243 協音驗證，替換後自動保證 100% 啱音。
               </span>
-              <button
-                onClick={() => setShowReviewModal(false)}
-                className="px-4 py-2 rounded-lg bg-zinc-200 hover:bg-zinc-300 text-zinc-800 font-medium text-xs transition"
-              >
-                關閉
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setShowReviewModal(false);
+                    runAutoRefineRound(lines, (round2Notice.roundCount || 2) + 1, 0);
+                  }}
+                  disabled={isReviewingLyrics}
+                  className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow-xs disabled:opacity-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>執行第 {(round2Notice.roundCount || 2) + 1} 輪 AI 自動檢閱修訂</span>
+                </button>
+                <button
+                  onClick={() => setShowReviewModal(false)}
+                  className="px-4 py-2 rounded-lg bg-zinc-200 hover:bg-zinc-300 text-zinc-800 font-medium text-xs transition"
+                >
+                  關閉
+                </button>
+              </div>
             </div>
           </div>
         </div>

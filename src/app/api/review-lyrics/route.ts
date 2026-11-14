@@ -97,15 +97,57 @@ export async function POST(req: NextRequest) {
       )
       .join('\n');
 
+    // 🔍 自動掃描全曲重複字眼／重複詞組，生成強制去重警報給 AI
+    const allCurrentPhrases: string[] = [];
+    const phraseFreq = new Map<string, number>();
+    const charFreq = new Map<string, number>();
+    const ignoreChars = new Set(['我', '你', '祢', '祂', '的', '了', '在', '是', '有', '與', '同', '不']);
+
+    for (const l of songOverview) {
+      for (const g of l.groups) {
+        if (!g.currentText) continue;
+        allCurrentPhrases.push(g.currentText);
+        phraseFreq.set(g.currentText, (phraseFreq.get(g.currentText) || 0) + 1);
+        for (const ch of Array.from(g.currentText)) {
+          if (!ignoreChars.has(ch)) {
+            charFreq.set(ch, (charFreq.get(ch) || 0) + 1);
+          }
+        }
+      }
+    }
+
+    const repeatedPhrases = Array.from(phraseFreq.entries())
+      .filter(([, cnt]) => cnt >= 2)
+      .map(([p, cnt]) => `「${p}」(出現${cnt}次)`);
+    const overusedChars = Array.from(charFreq.entries())
+      .filter(([, cnt]) => cnt >= 3)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([ch, cnt]) => `「${ch}」(${cnt}次)`);
+
+    const repetitionAlert =
+      repeatedPhrases.length > 0 || overusedChars.length > 0
+        ? `\n⚠️【全曲重複警報（必須修正！）】：${
+            repeatedPhrases.length > 0 ? `重複詞組：${repeatedPhrases.join('、')}；` : ''
+          }${
+            overusedChars.length > 0 ? `過度重複單字：${overusedChars.join('、')}` : ''
+          }。請務必將重複出現的組別改寫為全新不同的詞彙！`
+        : '';
+
+    const usedPhraseSet = new Set(allCurrentPhrases);
+
     const groupOptionsText = songOverview
       .map((l) => {
         const groupLines = l.groups.map((g) => {
           if (g.isFullyLocked) {
             return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${g.pattern}) 🔒【用戶已鎖定，請勿改動】`;
           }
+          // 優先呈現全曲尚未用過的新鮮詞彙供 AI 替換
+          const freshCandidates = g.candidates.filter((c) => !usedPhraseSet.has(c));
+          const displayPool = (freshCandidates.length >= 6 ? freshCandidates : g.candidates).slice(0, 10);
           return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${
             g.pattern
-          }) 100%啱音備選：【${g.candidates.slice(0, 8).join('、')}】`;
+          }) 100%啱音全新備選：【${displayPool.join('、')}】`;
         });
         return `第 ${l.lineIndex + 1} 行：\n${groupLines.join('\n')}`;
       })
@@ -113,9 +155,9 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `你是粵語基督教敬拜詩歌總監，負責全局主題檢閱與精修。
 任務：
-1. 檢視歌詞是否緊扣《${title}》主題與故事，起承轉合是否連貫。
-2. 抓出所有唔 make sense、名詞硬塞（如「大地月光」「頌揚月光」）、重複或偏離主題的詞組（🔒已鎖定勿動）。即使原詞來自詞庫，只要放入前後文唔順就必須修改！
-3. 為每一處挑選 2～3 個最貼題順口且 100% 吻合該組 0243 音階的替換詞（優先選自備選庫，或原創地道協音好詞；0陽平/2陽去上入/4我你祢美永柱眼免引曙領及陰去中入/3陰平上入）。
+1. 檢視全曲結構是否緊扣《${title}》主題與故事，起承轉合是否連貫。
+2. 嚴格抓出所有唔 make sense、名詞硬塞（如「大地月光」「頌揚月光」）、意思不好、過度重複單字或重複詞組，以及偏離主題的詞組（🔒已鎖定勿動）。即使原詞來自詞庫，只要放入前後文唔順或有重複，都必須修改！
+3. 為每一處挑選 2～3 個**全新不重複**、最貼題順口且 100% 吻合該組 0243 音階的替換詞（優先選自備選庫，或原創地道協音好詞；0陽平/2陽去上入/4我你祢美永柱眼免引曙領及陰去中入/3陰平上入）。
 
 請務必簡明精煉輸出純 JSON（每段評語限 20~35 字以內，極速回傳）：
 {
@@ -139,12 +181,12 @@ export async function POST(req: NextRequest) {
 【人稱視角】：${perspective}
 
 【當前整首歌詞全貌】：
-${fullSongLyricsText}
+${fullSongLyricsText}${repetitionAlert}
 
-【各組目標音階與 100% 啱音候選庫】：
+【各組目標音階與 100% 啱音全新備選庫】：
 ${groupOptionsText}
 
-請進行全曲鳥瞰級深度審閱，輸出合法的 JSON。`;
+請進行全曲鳥瞰級深度審閱，徹底消除重複並緊扣主題，輸出合法的 JSON。`;
 
     const reviewResult = await callLLMJson<LLMReviewResponse>(
       aiConfig,
@@ -166,25 +208,44 @@ ${groupOptionsText}
       const candidatesPool =
         songOverview[imp.lineIndex]?.groups?.[imp.groupIdx]?.candidates || [];
 
-      // 過濾出 100% 啱音的推薦詞
+      // 過濾出 100% 啱音且不與全曲重複的推薦詞
       const verifiedSuggestions: string[] = [];
       for (const phrase of imp.suggestedPhrases || []) {
         const clean = phrase.replace(/[^\u4e00-\u9fa5]/g, '');
         if (
           clean.length === targetPat.length &&
           verifyPhraseAgainstPattern(clean, targetPat).isExactMatch &&
-          clean !== imp.currentPhrase
+          clean !== imp.currentPhrase &&
+          !usedPhraseSet.has(clean)
         ) {
           if (!verifiedSuggestions.includes(clean)) verifiedSuggestions.push(clean);
         }
       }
 
-      // 若 AI 自創詞唔啱音，從本地高分候選庫中補充優質主題詞
+      // 若 AI 自創詞唔啱音或已重複，從本地高分候選庫中補充全新不重複的主題詞
       for (const poolWord of candidatesPool) {
         if (verifiedSuggestions.length >= 3) break;
-        if (poolWord !== imp.currentPhrase && !verifiedSuggestions.includes(poolWord)) {
+        if (
+          poolWord !== imp.currentPhrase &&
+          !usedPhraseSet.has(poolWord) &&
+          !verifiedSuggestions.includes(poolWord)
+        ) {
           verifiedSuggestions.push(poolWord);
         }
+      }
+
+      // 若仍不足 1 個，放寬去重備援
+      if (verifiedSuggestions.length === 0) {
+        for (const poolWord of candidatesPool) {
+          if (poolWord !== imp.currentPhrase) {
+            verifiedSuggestions.push(poolWord);
+            break;
+          }
+        }
+      }
+
+      if (verifiedSuggestions[0]) {
+        usedPhraseSet.add(verifiedSuggestions[0]);
       }
 
       return {
