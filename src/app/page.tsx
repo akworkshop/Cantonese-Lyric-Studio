@@ -1319,21 +1319,31 @@ export default function CantoneseLyricStudioPage() {
       setRound2Notice({ status: 'running', changes: [] });
       showToast('🪄 第 1 輪初稿完成！正在進行第 2 輪全局意境檢核與自動修正...');
 
-      // 🚀 Stage 2: 稍微停頓後發起獨立 HTTP Request 進行全局主題檢核與自動修正
+      // 🚀 Stage 2: 稍微停頓 2.5 秒冷卻 AI 頻率限制（避免連續請求觸發 429 / 繁忙），再發起第 2 輪全局主題檢核
       // 每個 Request 各自獨立計時，徹底規避 Vercel 10 秒上限！
       try {
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        const reviewRes = await fetch('/api/review-lyrics', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title,
-            meaning,
-            lines: data.lines,
-            perspective,
-            aiConfig,
-          }),
-        });
+        showToast('⏳ 第 1 輪初稿完成！稍候 2.5 秒冷卻頻率後，自動展開第 2 輪全局檢閱...');
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+
+        const callReviewApi = () =>
+          fetch('/api/review-lyrics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title,
+              meaning,
+              lines: data.lines,
+              perspective,
+              aiConfig,
+            }),
+          });
+
+        let reviewRes = await callReviewApi();
+        // 若遇 AI 速率限制或暫時繁忙，自動等待 3 秒後重試一次
+        if (!reviewRes.ok) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          reviewRes = await callReviewApi();
+        }
 
         if (reviewRes.ok) {
           const reviewData = await reviewRes.json();
