@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
               .join('')
           : '';
 
-        const candidateSampleList = verifiedBricks.slice(0, 60);
+        const candidateSampleList = verifiedBricks.slice(0, 24);
         const candidateSample = candidateSampleList.join('、');
 
         return `  • 第 ${gIdx + 1} 組 [目標聲調: ${gPat}，${gPat.length}字]${
@@ -292,7 +292,7 @@ ${lineSpecs.map((s) => s.constraintText).join('\n\n')}
 5. 嚴格遵守人稱視角【${activePerspective.title}】。
 6. 依各組目標字數輸出 JSON。`;
 
-    // 執行第一輪 LLM 生成（設置 5 秒超時，預留充足時間給本地審查與單次定向微修，杜絕 Vercel 504）
+    // 執行第一輪 LLM 生成（設置 12 秒充裕時限，精簡候選詞後通常只需 2~3 秒即可完成）
     let firstPass: LLMGenerateResponse | null = null;
     try {
       firstPass = await callLLMJson<LLMGenerateResponse>(
@@ -300,7 +300,7 @@ ${lineSpecs.map((s) => s.constraintText).join('\n\n')}
         systemPrompt,
         userPrompt,
         0.5,
-        5000
+        12000
       );
     } catch (pass1Err) {
       console.warn('AI 初稿生成逾時或異常，由本地神學詞庫無縫補全：', pass1Err);

@@ -1307,13 +1307,72 @@ export default function CantoneseLyricStudioPage() {
         throw new Error(data.error || 'AI 生成失敗');
       }
       commitLinesUpdate(data.lines);
-      let toastMsg = `AI 填詞完成（協音率 ${data.stats?.finalAccuracy ?? 100}%${
-        data.stats?.elapsedMs ? `，耗時 ${(data.stats.elapsedMs / 1000).toFixed(1)}s` : ''
-      }）`;
-      if (data.stats?.repeatedWordWarnings && data.stats.repeatedWordWarnings.length > 0) {
-        toastMsg += `；提示：${data.stats.repeatedWordWarnings.join('、')} 出現超過 3 次`;
+      showToast('🪄 第一輪初稿完成！正在進行第二輪全局意境檢核與自動校對...');
+
+      // 🚀 Stage 2: 獨立 HTTP Request 全局主題檢核與自動校對
+      // 每個 Request 各自獨立計時（均在 3~4 秒內），徹底規避 Vercel 10 秒上限！
+      try {
+        setIsReviewingLyrics(true);
+        const reviewRes = await fetch('/api/review-lyrics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            meaning,
+            lines: data.lines,
+            perspective,
+            aiConfig,
+          }),
+        });
+
+        if (reviewRes.ok) {
+          const reviewData = await reviewRes.json();
+          setThematicReview(reviewData);
+
+          if (reviewData.improvements && reviewData.improvements.length > 0) {
+            let nextLines: LyricLine[] = [...(data.lines as LyricLine[])];
+            for (const imp of reviewData.improvements) {
+              const bestPhrase = imp.suggestedPhrases[0];
+              if (!bestPhrase) continue;
+              const chars = Array.from(bestPhrase);
+              nextLines = nextLines.map((line: LyricLine, lIdx: number) => {
+                if (lIdx !== imp.lineIndex) return line;
+                return {
+                  ...line,
+                  groups: line.groups.map((group, gIdx: number) => {
+                    if (gIdx !== imp.groupIdx) return group;
+                    return {
+                      ...group,
+                      tokens: group.tokens.map((tok: LyricToken, tIdx: number) => {
+                        const newChar = String(chars[tIdx] || tok.char || '');
+                        return analyzeCharToken(
+                          newChar,
+                          tok.expectedTone,
+                          tIdx === group.tokens.length - 1,
+                          tok.id,
+                          tok.status
+                        );
+                      }),
+                    };
+                  }),
+                };
+              });
+            }
+            commitLinesUpdate(nextLines);
+            showToast(
+              `✨ 全局校對完成（評分：${reviewData.overallScore} 分）！已自動修正 ${reviewData.improvements.length} 處生硬詞磚，全曲更加貼題！`
+            );
+          } else {
+            showToast(
+              `✨ 全局主題檢測通過（評分：${reviewData.overallScore} 分）！全曲一氣呵成！`
+            );
+          }
+        }
+      } catch (reviewErr) {
+        console.warn('第二輪自動校對略過：', reviewErr);
+      } finally {
+        setIsReviewingLyrics(false);
       }
-      showToast(toastMsg);
     } catch (err: unknown) {
       setErrorBanner(err instanceof Error ? err.message : '生成歌詞時發生錯誤');
     } finally {

@@ -929,6 +929,8 @@ export const RAW_CANTONESE_WORSHIP_CORPUS: string[] = [
   '祢恩', '祢手', '祢光', '祢心', '祢道', '祢話', '祢愛', '祢名', '祢聲', '祢面',
   '知我', '牽我', '撫我', '擁我', '守我', '懂我', '因祢', '歸祢', '依祢', '屬祢',
   '主愛', '主恩', '主手', '主心', '主光', '主道', '主名', '主聲', '神恩', '神愛',
+  // === 7b. 敬拜與神學常用「23 音階（陽去/陽上/陽入 + 陰平/陰上/陰入）」高頻好詞（徹底根治 23 只有「月光/亮光」的詞荒） ===
+  '上主', '謝恩', '謝主', '念恩', '頌歌', '頌稱', '頌詩', '大恩', '大工', '善工', '善歌', '善心', '萬邦', '萬軍', '萬家', '萬方', '萬心', '萬千', '復興', '牧者', '受洗', '認真', '認清', '活出', '道出', '願聽', '願知', '問心', '立心', '立身', '立足', '下跪', '踏出', '入心', '目光', '巨星', '後生',
   '伴我走', '領我走', '陪我走', '引導我', '照亮我', '潔淨我', '赦免我', '安慰我', '眷顧我', '擁抱我', '守護我', '醫治我', '扶持我', '堅固我', '塑造我', '陶造我', '充滿我', '釋放我', '提攜我', '體恤我', '看顧我', '保護我', '拯救我', '救贖我', '改變我',
   '聽我言', '聽我聲', '聽禱告', '垂聽我', '細聽我', '牽我手', '緊握我', '指方向',
   '我愛祢', '我信祢', '我靠祢', '我敬拜', '我讚美', '我盼望', '我信靠', '我感謝', '我仰望', '我順服', '我跟隨', '我歌唱', '我感恩', '我深信', '我深愛', '我渴慕', '我親近', '我投靠', '我交託',
@@ -1180,16 +1182,22 @@ function isNaturalCombinedPhrase(left: string, right: string): boolean {
   // 5. 避免詞組結尾停在懸空介詞／連詞／副詞（如「...在」、「...向」、「...求」、「...更」）
   const lastChar = chars[chars.length - 1];
 
-  // 6. 讚美宣揚類動詞禁止與負面/自然災害名詞生硬拼接（如「頌揚大水」、「讚美風暴」等無神學依據之怪詞）
+  // 6. 讚美宣揚類動詞禁止與負面/自然災害名詞或自然發光體生硬拼接
+  // （嚴禁「頌揚大水」、「讚美風暴」、「頌揚月光」、「頌揚亮光」、「稱頌星光」等不合敬拜神學之怪詞）
   const praiseVerbs = ['頌揚', '讚美', '稱頌', '高唱', '歌頌', '宣揚', '高舉', '稱揚', '歡唱'];
   const calamityNouns = ['大水', '風暴', '洪水', '狂風', '幽谷', '黑夜', '暗夜', '死蔭', '波濤', '巨浪'];
-  if (praiseVerbs.some((v) => left.includes(v)) && calamityNouns.some((n) => right.includes(n))) {
+  const celestialInanimates = ['月光', '亮光', '日光', '星光', '月亮', '太陽', '星宿', '晨星'];
+  if (
+    praiseVerbs.some((v) => left.includes(v)) &&
+    (calamityNouns.some((n) => right.includes(n)) ||
+      celestialInanimates.some((n) => right.includes(n)))
+  ) {
     return false;
   }
 
   // 6b. 條件與假設連詞（若是/如果/倘若）禁止與自然名詞生硬組裝（如「若是亮光」、「若非大水」）
   const conditionalWords = ['若是', '如果', '倘若', '假若', '除非', '若非', '若不', '只要'];
-  const bareObjects = ['亮光', '大水', '風暴', '黑夜', '幽谷', '大地', '宇宙', '滄海', '江河'];
+  const bareObjects = ['亮光', '月光', '大水', '風暴', '黑夜', '幽谷', '大地', '宇宙', '滄海', '江河'];
   if (conditionalWords.includes(left) && bareObjects.includes(right)) {
     return false;
   }
@@ -1200,6 +1208,11 @@ function isNaturalCombinedPhrase(left: string, right: string): boolean {
   if (right === '大水' || right === '洪水') {
     const validFloodPrefixes = ['翻騰', '滔滔', '洶湧', '漫過', '縱有', '哪怕', '縱使'];
     if (!validFloodPrefixes.includes(left)) return false;
+  }
+
+  // 6c. 自然無生命發光體（月光/亮光/星光）禁止與靜態名詞或連詞生硬組裝（徹底杜絕「大地月光」、「大地亮光」、「若是亮光」）
+  if (celestialInanimates.some((n) => right.includes(n)) && ['大地', '宇宙', '世界', '世間', '若是', '步履', '事奉'].includes(left)) {
+    return false;
   }
 
   // 7. 嚴禁任何文理不通、生硬古怪的死板拼湊（例如「真主」、「我慕神」、「慕神」、「萬王」作為雙字）
@@ -1349,20 +1362,14 @@ export function getVerifiedCandidatesForGroupPattern(
     }
   }
 
-  const allPool = [...exactCandidates, ...combinedCandidates];
-
-  // 若有提供歌曲主題／故事，優先將契合主題故事的詞組排在最前面！
+  // 1. 人手精選／真實完整詞庫（exactCandidates）擁有最高優先級，永遠排在任何拼接詞（combinedCandidates）前面！
+  // 2. 分別在各自群組內依歌曲主題契合度排序，徹底杜絕拼接怪詞因為蹭了關鍵字而篡位排到真實好詞前面！
   if (themeText.trim()) {
-    allPool.sort((a, b) => {
-      const scoreDiff = scorePhraseByTheme(b, themeText) - scorePhraseByTheme(a, themeText);
-      if (scoreDiff !== 0) return scoreDiff;
-      // 完整詞庫原詞優先於拼接詞
-      const aExact = exactCandidates.includes(a) ? 1 : 0;
-      const bExact = exactCandidates.includes(b) ? 1 : 0;
-      return bExact - aExact;
-    });
+    exactCandidates.sort((a, b) => scorePhraseByTheme(b, themeText) - scorePhraseByTheme(a, themeText));
+    combinedCandidates.sort((a, b) => scorePhraseByTheme(b, themeText) - scorePhraseByTheme(a, themeText));
   }
 
+  const allPool = [...exactCandidates, ...combinedCandidates];
   return allPool.slice(0, limit);
 }
 
