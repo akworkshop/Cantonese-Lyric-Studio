@@ -1307,12 +1307,15 @@ export default function CantoneseLyricStudioPage() {
         throw new Error(data.error || 'AI 生成失敗');
       }
       commitLinesUpdate(data.lines);
-      showToast('🪄 第一輪初稿完成！正在進行第二輪全局意境檢核與自動校對...');
+      // 立即關閉全螢幕生成遮罩，讓用戶親眼看見第 1 輪初稿出現在畫布上
+      setIsGeneratingLyrics(false);
+      setIsReviewingLyrics(true);
+      showToast('🪄 第 1 輪初稿完成！正在進行第 2 輪全局意境檢核與自動修正...');
 
-      // 🚀 Stage 2: 獨立 HTTP Request 全局主題檢核與自動校對
-      // 每個 Request 各自獨立計時（均在 3~4 秒內），徹底規避 Vercel 10 秒上限！
+      // 🚀 Stage 2: 稍微停頓後發起獨立 HTTP Request 進行全局主題檢核與自動修正
+      // 每個 Request 各自獨立計時，徹底規避 Vercel 10 秒上限！
       try {
-        setIsReviewingLyrics(true);
+        await new Promise((resolve) => setTimeout(resolve, 400));
         const reviewRes = await fetch('/api/review-lyrics', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1331,9 +1334,11 @@ export default function CantoneseLyricStudioPage() {
 
           if (reviewData.improvements && reviewData.improvements.length > 0) {
             let nextLines: LyricLine[] = [...(data.lines as LyricLine[])];
+            const changedSummaries: string[] = [];
             for (const imp of reviewData.improvements) {
               const bestPhrase = imp.suggestedPhrases[0];
               if (!bestPhrase) continue;
+              changedSummaries.push(`「${imp.currentPhrase}」➔「${bestPhrase}」`);
               const chars = Array.from(bestPhrase);
               nextLines = nextLines.map((line: LyricLine, lIdx: number) => {
                 if (lIdx !== imp.lineIndex) return line;
@@ -1359,17 +1364,21 @@ export default function CantoneseLyricStudioPage() {
               });
             }
             commitLinesUpdate(nextLines);
+            const previewText = changedSummaries.slice(0, 2).join('、');
             showToast(
-              `✨ 全局校對完成（評分：${reviewData.overallScore} 分）！已自動修正 ${reviewData.improvements.length} 處生硬詞磚，全曲更加貼題！`
+              `✨ 第 2 輪自動優化完成（${reviewData.overallScore}分）！已改寫 ${previewText} 等 ${reviewData.improvements.length} 處，可點「🧐 全局主題檢測」睇報告！`
             );
           } else {
             showToast(
-              `✨ 全局主題檢測通過（評分：${reviewData.overallScore} 分）！全曲一氣呵成！`
+              `✨ 第 2 輪全局檢測通過（${reviewData.overallScore}分）！全曲緊扣主題，一氣呵成！`
             );
           }
+        } else {
+          showToast('第 1 輪初稿已完成（第 2 輪自動檢測暫時繁忙，可稍後手動點擊「🧐 全局主題檢測」）');
         }
       } catch (reviewErr) {
         console.warn('第二輪自動校對略過：', reviewErr);
+        showToast('第 1 輪初稿已完成（可點擊「🧐 全局主題檢測」進行手動檢閱）');
       } finally {
         setIsReviewingLyrics(false);
       }
@@ -2351,6 +2360,38 @@ export default function CantoneseLyricStudioPage() {
               </div>
             </div>
           </div>
+
+          {/* 🚀 第 2 輪自動全局檢閱進度與結果橫幅 */}
+          {isReviewingLyrics && (
+            <div className="max-w-5xl mx-auto mb-4 p-3.5 rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-300 shadow-sm flex items-center justify-between gap-3 animate-pulse">
+              <div className="flex items-center gap-2.5 text-amber-950 text-xs sm:text-sm font-semibold">
+                <RefreshCw className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
+                <span>🔍 第 1 輪初稿已完成！AI 正在進行第 2 輪全局檢閱（檢查有否偏離主題、重複或生硬詞組，並自動升級）...</span>
+              </div>
+            </div>
+          )}
+
+          {!isReviewingLyrics && thematicReview && (
+            <div className="max-w-5xl mx-auto mb-4 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 text-emerald-900">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="font-semibold">
+                  第 2 輪全局校對報告（契合度：{thematicReview.overallScore} / 100 分）
+                </span>
+                <span className="text-emerald-700 hidden sm:inline">
+                  {thematicReview.improvements.length > 0
+                    ? `· 已自動優化／建議 ${thematicReview.improvements.length} 處意境詞磚`
+                    : '· 全曲起承轉合流暢貼題'}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowReviewModal(true)}
+                className="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-medium text-[11px] transition shadow-2xs"
+              >
+                查看校對詳情與再挑詞 👉
+              </button>
+            </div>
+          )}
 
           {/* 歌詞行列表 */}
           <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">

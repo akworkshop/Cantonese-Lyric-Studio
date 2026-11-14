@@ -147,6 +147,7 @@ const THEOLOGICAL_JYUTPING_OVERRIDES: Record<string, string[]> = {
   引: ['jan5'],
   曙: ['cyu5', 'syu5'],
   領: ['ling5'],
+  這: ['ze3'],
 };
 
 /**
@@ -368,6 +369,7 @@ const CUSTOM_0243_TONE_OVERRIDES: Record<string, string> = {
   引: '4',
   曙: '4',
   領: '4',
+  這: '4',
   名: '0',
 };
 
