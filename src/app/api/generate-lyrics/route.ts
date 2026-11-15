@@ -53,8 +53,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const isLowTpm = aiConfig?.provider === 'groq';
     const themeContext = `${title} ${meaning}`.trim();
-    const lexiconHint = buildDynamicLexiconPrompt(rawLines, title, meaning, perspective);
+    const lexiconHint = isLowTpm
+      ? ''
+      : buildDynamicLexiconPrompt(rawLines, title, meaning, perspective);
 
     const perspectiveGuidelines: Record<SongPerspective, { title: string; desc: string }> = {
       devotional: {
@@ -146,9 +149,19 @@ export async function POST(req: NextRequest) {
               .join('')
           : '';
 
-        const candidateLimit = rawLines.length >= 14 ? 14 : 24;
+        const candidateLimit = isLowTpm
+          ? rawLines.length >= 14
+            ? 5
+            : 7
+          : rawLines.length >= 14
+          ? 14
+          : 24;
         const candidateSampleList = verifiedBricks.slice(0, candidateLimit);
         const candidateSample = candidateSampleList.join('、');
+
+        if (isLowTpm) {
+          return `G${gIdx + 1}[${gPat}${hasLocked ? `|鎖:${lockedMask}` : ''}]:${candidateSample}`;
+        }
 
         return `  • 第 ${gIdx + 1} 組 [目標聲調: ${gPat}，${gPat.length}字]${
           hasLocked ? ` (鎖定模板: "${lockedMask}")` : ''
@@ -161,13 +174,22 @@ export async function POST(req: NextRequest) {
         lineIndex: lIdx,
         targetPattern: linePat,
         groupPatterns,
-        constraintText: `第 ${lIdx + 1} 行 ${section ? `【${section}】` : ''}(${linePat})：\n${groupConstraintDescriptions.join(
-          '\n'
-        )}${sectionGuidance ? `\n    💡 ${sectionGuidance}` : ''}`,
+        constraintText: isLowTpm
+          ? `L${lIdx}[${section || (isVerse ? 'Verse' : isChorus ? 'Chorus' : isBridge ? 'Bridge' : 'Line')}](${linePat}): ${groupConstraintDescriptions.join(' | ')}`
+          : `第 ${lIdx + 1} 行 ${section ? `【${section}】` : ''}(${linePat})：\n${groupConstraintDescriptions.join(
+              '\n'
+            )}${sectionGuidance ? `\n    💡 ${sectionGuidance}` : ''}`,
       };
     });
 
-    const systemPrompt = `你是一位精通「0243 粵語協音對位法」與現代粵語敬拜詩歌（如玻璃海、同心圓、ACM、CantonHymn 風格）的大師級填詞人。
+    const systemPrompt = isLowTpm
+      ? `粵語0243敬拜詩歌填詞人。視角：${activePerspective.title}（${activePerspective.desc}）。
+規則：
+1.嚴守0243音階（0陽平/2陽去上入/4我你祢仰這記裡美永柱眼免引曙領及陰去中入/3陰平上入），不可增減字數，鎖定字必留。
+2.整行連讀必須主謂賓完整、緊扣《${title}》故事，嚴禁名詞硬拼（如「受造萬邦 真盼望」）或句尾懸空（如「一生愛」）。
+3.Verse先鋪陳具體處境，Chorus爆發宣告，全曲實詞組不可重複。
+只輸出純JSON：{"lines":[{"lineIndex":0,"groups":["詞1","詞2"]}]}`
+      : `你是一位精通「0243 粵語協音對位法」與現代粵語敬拜詩歌（如玻璃海、同心圓、ACM、CantonHymn 風格）的大師級填詞人。
 你的任務是根據用戶提供的「歌曲名稱」、「歌曲含意／想表達的故事」及「0243 數字譜」，創作出**100% 文法自然、絕不夾硬砌字、緊扣故事精髓、詞彙豐富且 100% 啱音**的詩歌歌詞。
 
 ### 👤 本曲指定人稱視角與口吻：【${activePerspective.title}】
@@ -276,7 +298,11 @@ ${lexiconHint}
   ]
 }`;
 
-    const userPrompt = `【歌曲名稱】：${title}
+    const userPrompt = isLowTpm
+      ? `歌名:${title}｜主題:${meaning}
+${lineSpecs.map((s) => s.constraintText).join('\n')}
+請從以上100%啱音備選挑選或原創，確保每行連讀通順連貫、零重複，輸出JSON。`
+      : `【歌曲名稱】：${title}
 【歌曲含意／想表達的故事（核心靈魂，每句歌詞必須緊扣此主題！）】：${meaning}
 【指定人稱視角（嚴格遵守，違者無效）】：${activePerspective.title}（${activePerspective.desc}）
 
@@ -518,6 +544,7 @@ ${lineSpecs.map((s) => s.constraintText).join('\n\n')}
       excessiveReps.length > 0;
 
     if (
+      !isLowTpm &&
       aiConfig.enableAutoRepair !== false &&
       needsRepair &&
       budgetRemaining >= 2500

@@ -257,14 +257,31 @@ export async function POST(req: NextRequest) {
     const rejectedPhraseSet = new Set(rejectedPhrases.filter(Boolean));
     const usedPhraseSet = new Set([...allCurrentPhrases, ...rejectedPhraseSet]);
 
-    // 依未鎖定行數動態調節候選數量，確保 16+ 句長歌依然穩守 Vercel 10 秒安全線
+    const isLowTpm = aiConfig?.provider === 'groq';
+    // 依未鎖定行數與供應商 TPM 上限動態調節候選數量（Groq 8000 TPM 啟用超精簡高準度模式）
     const unlockedLineCount = songOverview.filter((l) =>
       l.groups.some((g) => !g.isFullyLocked)
     ).length;
-    const groupPoolSize = unlockedLineCount >= 13 ? 16 : unlockedLineCount >= 10 ? 25 : 36;
-    const altSplitCount = unlockedLineCount >= 13 ? 3 : unlockedLineCount >= 10 ? 5 : 7;
-    const altPartPoolSize = unlockedLineCount >= 13 ? 6 : unlockedLineCount >= 10 ? 8 : 12;
-    const includeThreeGroup = unlockedLineCount < 13;
+    const groupPoolSize = isLowTpm
+      ? unlockedLineCount >= 13
+        ? 4
+        : 6
+      : unlockedLineCount >= 13
+      ? 16
+      : unlockedLineCount >= 10
+      ? 25
+      : 36;
+    const altSplitCount = isLowTpm
+      ? unlockedLineCount >= 13
+        ? 1
+        : 2
+      : unlockedLineCount >= 13
+      ? 3
+      : unlockedLineCount >= 10
+      ? 5
+      : 7;
+    const altPartPoolSize = isLowTpm ? 4 : unlockedLineCount >= 13 ? 6 : unlockedLineCount >= 10 ? 8 : 12;
+    const includeThreeGroup = !isLowTpm && unlockedLineCount < 13;
 
     const groupOptionsText = songOverview
       .map((l) => {
@@ -274,18 +291,22 @@ export async function POST(req: NextRequest) {
         );
         const groupLines = l.groups.map((g) => {
           if (g.isFullyLocked) {
-            return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${g.pattern}) 🔒【用戶已鎖定，請勿改動】`;
+            return isLowTpm
+              ? `G${g.groupIdx + 1}[${g.pattern}]🔒${g.currentText}`
+              : `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${g.pattern}) 🔒【用戶已鎖定，請勿改動】`;
           }
           // 優先呈現全曲尚未用過且未被淘汰的新鮮詞彙供 AI 替換
           const nonRejected = g.candidates.filter((c) => !rejectedPhraseSet.has(c));
           const freshCandidates = nonRejected.filter((c) => !usedPhraseSet.has(c));
-          const displayPool = (freshCandidates.length >= 6 ? freshCandidates : nonRejected).slice(
+          const displayPool = (freshCandidates.length >= 4 ? freshCandidates : nonRejected).slice(
             0,
             groupPoolSize
           );
-          return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${
-            g.pattern
-          }) 100%啱音全新備選：【${displayPool.join('、')}】`;
+          return isLowTpm
+            ? `G${g.groupIdx + 1}[${g.pattern}]「${g.currentText}」備選:${displayPool.join('、')}`
+            : `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${
+                g.pattern
+              }) 100%啱音全新備選：【${displayPool.join('、')}】`;
         });
 
         let altSplitText = '';
@@ -300,24 +321,45 @@ export async function POST(req: NextRequest) {
             includeThreeGroup
           );
           if (altSplits.length > 0) {
-            const splitDesc = altSplits
-              .map((sp) => {
-                const partDesc = sp.parts
-                  .map((p, pIdx) => `組${pIdx + 1}(${p.pattern})[${p.candidates.join('、')}]`)
-                  .join(' + ');
-                return `    - 斷詞「${sp.splitPattern}」：${partDesc}`;
-              })
-              .join('\n');
-            altSplitText = `\n  🔄【全行跨組重新斷詞備選（音階總數 ${lineDigits} 不變，若單改一組仍唔順可整行重寫）】：\n${splitDesc}`;
+            if (isLowTpm) {
+              const splitDesc = altSplits
+                .map(
+                  (sp) =>
+                    `${sp.splitPattern}:${sp.parts
+                      .map((p) => p.candidates.join('/'))
+                      .join('+')}`
+                )
+                .join(' | ');
+              altSplitText = ` | 重斷:${splitDesc}`;
+            } else {
+              const splitDesc = altSplits
+                .map((sp) => {
+                  const partDesc = sp.parts
+                    .map((p, pIdx) => `組${pIdx + 1}(${p.pattern})[${p.candidates.join('、')}]`)
+                    .join(' + ');
+                  return `    - 斷詞「${sp.splitPattern}」：${partDesc}`;
+                })
+                .join('\n');
+              altSplitText = `\n  🔄【全行跨組重新斷詞備選（音階總數 ${lineDigits} 不變，若單改一組仍唔順可整行重寫）】：\n${splitDesc}`;
+            }
           }
         }
 
         const compactFullLine = l.groups.map((g) => g.currentText).join('');
-        return `第 ${l.lineIndex + 1} 行【整句連讀：${compactFullLine}】（原斷詞：${l.pattern}）：\n${groupLines.join('\n')}${altSplitText}`;
+        return isLowTpm
+          ? `L${l.lineIndex}(${l.pattern})「${compactFullLine}」: ${groupLines.join('; ')}${altSplitText}`
+          : `第 ${l.lineIndex + 1} 行【整句連讀：${compactFullLine}】（原斷詞：${l.pattern}）：\n${groupLines.join('\n')}${altSplitText}`;
       })
-      .join('\n\n');
+      .join(isLowTpm ? '\n' : '\n\n');
 
-    const systemPrompt = `你是粵語基督教敬拜詩歌總監，負責全局主題、句法結構與文法精修。
+    const systemPrompt = isLowTpm
+      ? `粵語敬拜詩歌精修總監。逐行連讀整句（如2223 342當成2223342讀），抓出：
+1.唔緊扣《${title}》、前後行唔連貫、重複字詞（🔒勿動）；
+2.句尾懸空（如「一生愛」）、名詞硬拼缺動詞（如「浩大頌詩 心盼望」「受造萬邦 真盼望」）。
+若單改一組仍唔順，設 "isLineRewrite":true、"groupIdx":0，重寫整行（可用原斷詞或「重斷」新斷詞，總音階不變，空格分隔）。
+嚴守0243（0陽平/2陽去上入/4我你祢仰這記裡美永柱眼免引曙領及陰去中入/3陰平上入）。
+只輸出精簡JSON：{"overallScore":88,"themeSummary":"20字內","storyArcCritique":"20字內","improvements":[{"lineIndex":0,"groupIdx":0,"isLineRewrite":false,"currentPhrase":"原詞","targetPattern":"0243","reason":"10字內","suggestedPhrases":["詞1","詞2"]}]}`
+      : `你是粵語基督教敬拜詩歌總監，負責全局主題、句法結構與文法精修。
 任務：
 1. 【先睇整句連讀，唔好分開兩格各自睇】：例如「2223 342」必須當成完整一句「2223342」連起來大聲讀一次！切勿只見「2223」順眼、「342」順眼就過關，必須檢查兩組拼埋一齊有冇清楚的主謂／動賓／因果連貫，緊扣《${title}》主題與故事，前後行之間亦要起承轉合連貫。
 2. 【嚴格文法與句式結構檢測】：
