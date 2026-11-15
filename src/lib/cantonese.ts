@@ -371,6 +371,8 @@ const CUSTOM_0243_TONE_OVERRIDES: Record<string, string> = {
   領: '4',
   這: '4',
   仰: '4',
+  裡: '4',
+  裏: '4',
   名: '0',
 };
 
