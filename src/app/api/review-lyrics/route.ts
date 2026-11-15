@@ -34,7 +34,10 @@ function getAlternativeLineSplits(
   lineDigits: string,
   currentPattern: string,
   themeContext: string,
-  blockedPhraseSet: Set<string>
+  blockedPhraseSet: Set<string>,
+  maxSplits = 6,
+  maxPerPart = 10,
+  includeThreeGroup = true
 ): { splitPattern: string; parts: { pattern: string; candidates: string[] }[] }[] {
   const n = lineDigits.length;
   if (n < 4 || n > 8) return [];
@@ -50,8 +53,8 @@ function getAlternativeLineSplits(
   for (let a = 2; a <= n - 2; a++) {
     candidateSplits.push([lineDigits.slice(0, a), lineDigits.slice(a)]);
   }
-  // 3-group splits (each >= 2, for 6..8 chars)
-  if (n >= 6) {
+  // 3-group splits (each >= 2, for 6..8 chars — 長歌時可跳過以節省運算與 Token)
+  if (includeThreeGroup && n >= 6) {
     for (let a = 2; a <= n - 4; a++) {
       for (let b = 2; b <= n - a - 2; b++) {
         candidateSplits.push([
@@ -78,9 +81,9 @@ function getAlternativeLineSplits(
     let totalCount = 0;
 
     for (const p of parts) {
-      const raw = getVerifiedCandidatesForGroupPattern(p, 24, false, themeContext);
+      const raw = getVerifiedCandidatesForGroupPattern(p, Math.max(maxPerPart + 6, 14), false, themeContext);
       const fresh = raw.filter((c) => !blockedPhraseSet.has(c));
-      const pool = (fresh.length >= 2 ? fresh : raw.filter((c) => !blockedPhraseSet.has(c))).slice(0, 14);
+      const pool = fresh.slice(0, maxPerPart);
       const minNeeded = parts.length === 1 && p.length >= 5 ? 1 : 2;
       if (pool.length < minNeeded) {
         valid = false;
@@ -99,7 +102,7 @@ function getAlternativeLineSplits(
 
   return scored
     .sort((a, b) => b.score - a.score)
-    .slice(0, 8)
+    .slice(0, maxSplits)
     .map(({ splitPattern, parts }) => ({ splitPattern, parts }));
 }
 
@@ -254,6 +257,15 @@ export async function POST(req: NextRequest) {
     const rejectedPhraseSet = new Set(rejectedPhrases.filter(Boolean));
     const usedPhraseSet = new Set([...allCurrentPhrases, ...rejectedPhraseSet]);
 
+    // 依未鎖定行數動態調節候選數量，確保 16+ 句長歌依然穩守 Vercel 10 秒安全線
+    const unlockedLineCount = songOverview.filter((l) =>
+      l.groups.some((g) => !g.isFullyLocked)
+    ).length;
+    const groupPoolSize = unlockedLineCount >= 13 ? 16 : unlockedLineCount >= 10 ? 25 : 36;
+    const altSplitCount = unlockedLineCount >= 13 ? 3 : unlockedLineCount >= 10 ? 5 : 7;
+    const altPartPoolSize = unlockedLineCount >= 13 ? 6 : unlockedLineCount >= 10 ? 8 : 12;
+    const includeThreeGroup = unlockedLineCount < 13;
+
     const groupOptionsText = songOverview
       .map((l) => {
         const lineDigits = l.pattern.replace(/\s+/g, '');
@@ -264,10 +276,13 @@ export async function POST(req: NextRequest) {
           if (g.isFullyLocked) {
             return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${g.pattern}) 🔒【用戶已鎖定，請勿改動】`;
           }
-          // 優先呈現全曲尚未用過且未被淘汰的新鮮詞彙供 AI 替換（擴大至 40 個豐富選擇）
+          // 優先呈現全曲尚未用過且未被淘汰的新鮮詞彙供 AI 替換
           const nonRejected = g.candidates.filter((c) => !rejectedPhraseSet.has(c));
           const freshCandidates = nonRejected.filter((c) => !usedPhraseSet.has(c));
-          const displayPool = (freshCandidates.length >= 8 ? freshCandidates : nonRejected).slice(0, 40);
+          const displayPool = (freshCandidates.length >= 6 ? freshCandidates : nonRejected).slice(
+            0,
+            groupPoolSize
+          );
           return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${
             g.pattern
           }) 100%啱音全新備選：【${displayPool.join('、')}】`;
@@ -279,7 +294,10 @@ export async function POST(req: NextRequest) {
             lineDigits,
             l.pattern,
             themeContext,
-            usedPhraseSet
+            usedPhraseSet,
+            altSplitCount,
+            altPartPoolSize,
+            includeThreeGroup
           );
           if (altSplits.length > 0) {
             const splitDesc = altSplits

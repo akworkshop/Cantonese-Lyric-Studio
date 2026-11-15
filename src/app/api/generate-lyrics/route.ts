@@ -146,7 +146,8 @@ export async function POST(req: NextRequest) {
               .join('')
           : '';
 
-        const candidateSampleList = verifiedBricks.slice(0, 24);
+        const candidateLimit = rawLines.length >= 14 ? 14 : 24;
+        const candidateSampleList = verifiedBricks.slice(0, candidateLimit);
         const candidateSample = candidateSampleList.join('、');
 
         return `  • 第 ${gIdx + 1} 組 [目標聲調: ${gPat}，${gPat.length}字]${
