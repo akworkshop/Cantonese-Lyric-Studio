@@ -272,6 +272,7 @@ export default function CantoneseLyricStudioPage() {
     score?: number;
     errorMessage?: string;
   }>({ status: 'idle', roundCount: 2, changes: [] });
+  const rejectedPhrasesRef = useRef<string[]>([]);
 
   // 📱 手機觸控左右滑動 (Swipe Left / Right) 切換「歌曲與0243譜」與「填詞畫布」
   const touchStartXRef = useRef<number | null>(null);
@@ -1288,6 +1289,10 @@ export default function CantoneseLyricStudioPage() {
       return;
     }
 
+    if (roundNum === 2) {
+      rejectedPhrasesRef.current = [];
+    }
+
     setIsReviewingLyrics(true);
     setRound2Notice({ status: 'running', roundCount: roundNum, changes: [] });
 
@@ -1310,6 +1315,7 @@ export default function CantoneseLyricStudioPage() {
             meaning,
             lines: targetLines,
             perspective,
+            rejectedPhrases: rejectedPhrasesRef.current,
             aiConfig,
           }),
         });
@@ -1337,6 +1343,16 @@ export default function CantoneseLyricStudioPage() {
               from: imp.currentPhrase,
               to: bestPhrase,
             });
+            // 記錄被淘汰的唔通順詞組，確保下一輪絕對不會再出現
+            const toReject = [
+              imp.currentPhrase,
+              ...imp.currentPhrase.split(/\s+/).filter(Boolean),
+            ];
+            for (const rej of toReject) {
+              if (rej && !rejectedPhrasesRef.current.includes(rej)) {
+                rejectedPhrasesRef.current.push(rej);
+              }
+            }
             nextLines = applyImprovementToLines(nextLines, imp, bestPhrase);
           }
           commitLinesUpdate(nextLines);

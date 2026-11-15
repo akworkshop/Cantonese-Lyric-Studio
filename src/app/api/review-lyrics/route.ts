@@ -34,7 +34,7 @@ function getAlternativeLineSplits(
   lineDigits: string,
   currentPattern: string,
   themeContext: string,
-  usedPhraseSet: Set<string>
+  blockedPhraseSet: Set<string>
 ): { splitPattern: string; parts: { pattern: string; candidates: string[] }[] }[] {
   const n = lineDigits.length;
   if (n < 4 || n > 8) return [];
@@ -78,9 +78,9 @@ function getAlternativeLineSplits(
     let totalCount = 0;
 
     for (const p of parts) {
-      const raw = getVerifiedCandidatesForGroupPattern(p, 12, false, themeContext);
-      const fresh = raw.filter((c) => !usedPhraseSet.has(c));
-      const pool = (fresh.length >= 2 ? fresh : raw).slice(0, 6);
+      const raw = getVerifiedCandidatesForGroupPattern(p, 24, false, themeContext);
+      const fresh = raw.filter((c) => !blockedPhraseSet.has(c));
+      const pool = (fresh.length >= 2 ? fresh : raw.filter((c) => !blockedPhraseSet.has(c))).slice(0, 14);
       const minNeeded = parts.length === 1 && p.length >= 5 ? 1 : 2;
       if (pool.length < minNeeded) {
         valid = false;
@@ -99,7 +99,7 @@ function getAlternativeLineSplits(
 
   return scored
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
+    .slice(0, 8)
     .map(({ splitPattern, parts }) => ({ splitPattern, parts }));
 }
 
@@ -111,12 +111,14 @@ export async function POST(req: NextRequest) {
       meaning = '敬拜讚美主恩',
       lines = [] as LyricLine[],
       perspective = 'devotional',
+      rejectedPhrases = [] as string[],
       aiConfig,
     }: {
       title: string;
       meaning: string;
       lines: LyricLine[];
       perspective?: SongPerspective;
+      rejectedPhrases?: string[];
       aiConfig: AIProviderConfig;
     } = body;
 
@@ -140,7 +142,7 @@ export async function POST(req: NextRequest) {
           g.tokens.length > 0 && g.tokens.every((t) => t.status === 'locked');
         const verifiedCandidates = getCandidatesWithLockedConstraints(
           g.tokens,
-          30,
+          60,
           false,
           themeContext
         );
@@ -249,7 +251,8 @@ export async function POST(req: NextRequest) {
           )}。請務必檢查整句語意，若唔通順請改寫動詞／詞組，或用 isLineRewrite 整行重新斷詞！`
         : '';
 
-    const usedPhraseSet = new Set(allCurrentPhrases);
+    const rejectedPhraseSet = new Set(rejectedPhrases.filter(Boolean));
+    const usedPhraseSet = new Set([...allCurrentPhrases, ...rejectedPhraseSet]);
 
     const groupOptionsText = songOverview
       .map((l) => {
@@ -261,9 +264,10 @@ export async function POST(req: NextRequest) {
           if (g.isFullyLocked) {
             return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${g.pattern}) 🔒【用戶已鎖定，請勿改動】`;
           }
-          // 優先呈現全曲尚未用過的新鮮詞彙供 AI 替換
-          const freshCandidates = g.candidates.filter((c) => !usedPhraseSet.has(c));
-          const displayPool = (freshCandidates.length >= 6 ? freshCandidates : g.candidates).slice(0, 15);
+          // 優先呈現全曲尚未用過且未被淘汰的新鮮詞彙供 AI 替換（擴大至 40 個豐富選擇）
+          const nonRejected = g.candidates.filter((c) => !rejectedPhraseSet.has(c));
+          const freshCandidates = nonRejected.filter((c) => !usedPhraseSet.has(c));
+          const displayPool = (freshCandidates.length >= 8 ? freshCandidates : nonRejected).slice(0, 40);
           return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${
             g.pattern
           }) 100%啱音全新備選：【${displayPool.join('、')}】`;
@@ -447,10 +451,10 @@ ${groupOptionsText}
           }
         }
 
-        // 若仍不足 1 個，放寬去重備援
+        // 若仍不足 1 個，放寬去重備援（但絕不重用已被淘汰的詞彙）
         if (verifiedSuggestions.length === 0) {
           for (const poolWord of candidatesPool) {
-            if (poolWord !== imp.currentPhrase) {
+            if (poolWord !== imp.currentPhrase && !rejectedPhraseSet.has(poolWord)) {
               verifiedSuggestions.push(poolWord);
               break;
             }
