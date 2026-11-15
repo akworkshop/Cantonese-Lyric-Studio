@@ -8,6 +8,7 @@ import { INTIMACY_PRAYER_CORPUS } from './intimacy-prayer';
 import { BIBLICAL_METAPHORS_CORPUS } from './biblical-metaphors';
 import { CONNECTIVES_TRANSITIONS_CORPUS } from './connectives-transitions';
 import { BIBLICAL_FIGURES_CORPUS } from './biblical-figures';
+import { CANTONESE_WORSHIP_CLAUSES_CORPUS } from './cantonese-worship-clauses';
 
 export {
   CANTONHYMN_CLASSIC_CORPUS,
@@ -20,6 +21,7 @@ export {
   BIBLICAL_METAPHORS_CORPUS,
   CONNECTIVES_TRANSITIONS_CORPUS,
   BIBLICAL_FIGURES_CORPUS,
+  CANTONESE_WORSHIP_CLAUSES_CORPUS,
 };
 
 /**
@@ -47,5 +49,6 @@ export const ALL_EXPANDED_WORSHIP_CORPUS: string[] = Array.from(
     ...BIBLICAL_METAPHORS_CORPUS,
     ...CONNECTIVES_TRANSITIONS_CORPUS,
     ...BIBLICAL_FIGURES_CORPUS,
+    ...CANTONESE_WORSHIP_CLAUSES_CORPUS,
   ])
 );
