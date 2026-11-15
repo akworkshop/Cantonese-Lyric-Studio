@@ -55,9 +55,10 @@ export async function POST(req: NextRequest) {
 
     const isLowTpm = aiConfig?.provider === 'groq';
     const themeContext = `${title} ${meaning}`.trim();
-    const lexiconHint = isLowTpm
-      ? ''
-      : buildDynamicLexiconPrompt(rawLines, title, meaning, perspective);
+    const lexiconHint =
+      isLowTpm || rawLines.length >= 12
+        ? ''
+        : buildDynamicLexiconPrompt(rawLines, title, meaning, perspective);
 
     const perspectiveGuidelines: Record<SongPerspective, { title: string; desc: string }> = {
       devotional: {
