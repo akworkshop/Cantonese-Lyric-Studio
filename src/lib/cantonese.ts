@@ -370,6 +370,7 @@ const CUSTOM_0243_TONE_OVERRIDES: Record<string, string> = {
   曙: '4',
   領: '4',
   這: '4',
+  仰: '4',
   名: '0',
 };
 
