@@ -1337,32 +1337,7 @@ export default function CantoneseLyricStudioPage() {
               from: imp.currentPhrase,
               to: bestPhrase,
             });
-            const chars = Array.from(bestPhrase);
-            nextLines = nextLines.map((line: LyricLine, lIdx: number) => {
-              if (lIdx !== imp.lineIndex) return line;
-              return {
-                ...line,
-                groups: line.groups.map((group, gIdx: number) => {
-                  if (gIdx !== imp.groupIdx) return group;
-                  return {
-                    ...group,
-                    tokens: group.tokens.map((tok: LyricToken, tIdx: number) => {
-                      const newChar =
-                        tok.status === 'locked'
-                          ? tok.char
-                          : String(chars[tIdx] || tok.char || '');
-                      return analyzeCharToken(
-                        newChar,
-                        tok.expectedTone,
-                        tIdx === group.tokens.length - 1,
-                        tok.id,
-                        tok.status
-                      );
-                    }),
-                  };
-                }),
-              };
-            });
+            nextLines = applyImprovementToLines(nextLines, imp, bestPhrase);
           }
           commitLinesUpdate(nextLines);
           setRound2Notice({
@@ -1512,19 +1487,66 @@ export default function CantoneseLyricStudioPage() {
     }
   };
 
-  // 套用單一局部優化詞磚
-  const handleApplyImprovement = (lineIdx: number, groupIdx: number, newPhrase: string) => {
-    const chars = Array.from(newPhrase);
-    const nextLines = lines.map((line, lIdx) => {
-      if (lIdx !== lineIdx) return line;
+  // 統一套用單組替換或跨組整行重新斷詞
+  const applyImprovementToLines = (
+    currentLines: LyricLine[],
+    imp: {
+      lineIndex: number;
+      groupIdx: number;
+      targetPattern?: string;
+      isLineRewrite?: boolean;
+    },
+    chosenPhrase: string
+  ): LyricLine[] => {
+    return currentLines.map((line, lIdx) => {
+      if (lIdx !== imp.lineIndex) return line;
+
+      if (imp.isLineRewrite && imp.targetPattern) {
+        const newGroupPatterns = imp.targetPattern.trim().split(/\s+/).filter(Boolean);
+        const origDigits = line.targetPattern.replace(/\s+/g, '');
+        if (newGroupPatterns.join('') === origDigits) {
+          const cleanAllChars = Array.from(chosenPhrase.replace(/\s+/g, ''));
+          if (cleanAllChars.length === origDigits.length) {
+            let offset = 0;
+            const rebuiltGroups = newGroupPatterns.map((gPat, gIdx) => {
+              const gChars = cleanAllChars.slice(offset, offset + gPat.length);
+              offset += gPat.length;
+              const tokens: LyricToken[] = Array.from(gPat).map((expectedTone, tIdx) =>
+                analyzeCharToken(
+                  String(gChars[tIdx] || ''),
+                  expectedTone,
+                  tIdx === gPat.length - 1,
+                  `${line.lineId}-rw-${gIdx}-${tIdx}`,
+                  'normal'
+                )
+              );
+              return {
+                groupId: `${line.lineId}-g-${gIdx}`,
+                targetGroupPattern: gPat,
+                tokens,
+              };
+            });
+            return {
+              ...line,
+              targetPattern: newGroupPatterns.join(' '),
+              groups: rebuiltGroups,
+            };
+          }
+        }
+      }
+
+      const chars = Array.from(chosenPhrase.replace(/\s+/g, ''));
       return {
         ...line,
         groups: line.groups.map((group, gIdx) => {
-          if (gIdx !== groupIdx) return group;
+          if (gIdx !== imp.groupIdx) return group;
           return {
             ...group,
             tokens: group.tokens.map((tok, tIdx) => {
-              const newChar = chars[tIdx] || tok.char;
+              const newChar =
+                tok.status === 'locked'
+                  ? tok.char
+                  : String(chars[tIdx] || tok.char || '');
               return analyzeCharToken(
                 newChar,
                 tok.expectedTone,
@@ -1537,6 +1559,14 @@ export default function CantoneseLyricStudioPage() {
         }),
       };
     });
+  };
+
+  // 套用單一局部優化或整行重組詞磚
+  const handleApplyImprovement = (
+    imp: { lineIndex: number; groupIdx: number; targetPattern?: string; isLineRewrite?: boolean },
+    newPhrase: string
+  ) => {
+    const nextLines = applyImprovementToLines(lines, imp, newPhrase);
     commitLinesUpdate(nextLines);
     showToast(`已套用「${newPhrase}」`);
   };
@@ -1548,29 +1578,7 @@ export default function CantoneseLyricStudioPage() {
     for (const imp of thematicReview.improvements) {
       const bestPhrase = imp.suggestedPhrases[0];
       if (!bestPhrase) continue;
-      const chars = Array.from(bestPhrase);
-      nextLines = nextLines.map((line, lIdx) => {
-        if (lIdx !== imp.lineIndex) return line;
-        return {
-          ...line,
-          groups: line.groups.map((group, gIdx) => {
-            if (gIdx !== imp.groupIdx) return group;
-            return {
-              ...group,
-              tokens: group.tokens.map((tok, tIdx) => {
-                const newChar = chars[tIdx] || tok.char;
-                return analyzeCharToken(
-                  newChar,
-                  tok.expectedTone,
-                  tIdx === group.tokens.length - 1,
-                  tok.id,
-                  tok.status
-                );
-              }),
-            };
-          }),
-        };
-      });
+      nextLines = applyImprovementToLines(nextLines, imp, bestPhrase);
     }
     commitLinesUpdate(nextLines);
     setShowReviewModal(false);
@@ -3224,7 +3232,9 @@ export default function CantoneseLyricStudioPage() {
                       >
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="font-semibold text-zinc-700">
-                            第 {imp.lineIndex + 1} 行 · 第 {imp.groupIdx + 1} 組（音階：{imp.targetPattern}）
+                            {imp.isLineRewrite
+                              ? `第 ${imp.lineIndex + 1} 行 · 全行重新斷詞（音階：${imp.targetPattern}）`
+                              : `第 ${imp.lineIndex + 1} 行 · 第 ${imp.groupIdx + 1} 組（音階：${imp.targetPattern}）`}
                           </span>
                           <span className="text-zinc-400 font-mono">原詞：「{imp.currentPhrase}」</span>
                         </div>
@@ -3239,7 +3249,7 @@ export default function CantoneseLyricStudioPage() {
                             {imp.suggestedPhrases.map((phrase, pIdx) => (
                               <button
                                 key={pIdx}
-                                onClick={() => handleApplyImprovement(imp.lineIndex, imp.groupIdx, phrase)}
+                                onClick={() => handleApplyImprovement(imp, phrase)}
                                 className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-medium text-xs flex items-center gap-1 transition active:scale-95 group"
                               >
                                 <span>{phrase}</span>

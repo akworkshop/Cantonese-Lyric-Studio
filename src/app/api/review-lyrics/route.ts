@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getCandidatesWithLockedConstraints,
+  getVerifiedCandidatesForGroupPattern,
   verifyPhraseAgainstPattern,
 } from '@/lib/cantonese';
 import { callLLMJson } from '@/lib/ai-providers';
@@ -25,7 +26,81 @@ interface LLMReviewResponse {
     targetPattern: string;
     reason: string;
     suggestedPhrases: string[];
+    isLineRewrite?: boolean;
   }[];
+}
+
+function getAlternativeLineSplits(
+  lineDigits: string,
+  currentPattern: string,
+  themeContext: string,
+  usedPhraseSet: Set<string>
+): { splitPattern: string; parts: { pattern: string; candidates: string[] }[] }[] {
+  const n = lineDigits.length;
+  if (n < 4 || n > 8) return [];
+
+  const normalizedCurrent = currentPattern.trim().replace(/\s+/g, ' ');
+  const candidateSplits: string[][] = [];
+
+  // 1-group (e.g. 4..7 chars)
+  if (n >= 4 && n <= 7) {
+    candidateSplits.push([lineDigits]);
+  }
+  // 2-group splits (each >= 2)
+  for (let a = 2; a <= n - 2; a++) {
+    candidateSplits.push([lineDigits.slice(0, a), lineDigits.slice(a)]);
+  }
+  // 3-group splits (each >= 2, for 6..8 chars)
+  if (n >= 6) {
+    for (let a = 2; a <= n - 4; a++) {
+      for (let b = 2; b <= n - a - 2; b++) {
+        candidateSplits.push([
+          lineDigits.slice(0, a),
+          lineDigits.slice(a, a + b),
+          lineDigits.slice(a + b),
+        ]);
+      }
+    }
+  }
+
+  const scored: {
+    splitPattern: string;
+    parts: { pattern: string; candidates: string[] }[];
+    score: number;
+  }[] = [];
+
+  for (const parts of candidateSplits) {
+    const splitPattern = parts.join(' ');
+    if (splitPattern === normalizedCurrent) continue;
+
+    const partData: { pattern: string; candidates: string[] }[] = [];
+    let valid = true;
+    let totalCount = 0;
+
+    for (const p of parts) {
+      const raw = getVerifiedCandidatesForGroupPattern(p, 12, false, themeContext);
+      const fresh = raw.filter((c) => !usedPhraseSet.has(c));
+      const pool = (fresh.length >= 2 ? fresh : raw).slice(0, 6);
+      const minNeeded = parts.length === 1 && p.length >= 5 ? 1 : 2;
+      if (pool.length < minNeeded) {
+        valid = false;
+        break;
+      }
+      totalCount += pool.length;
+      partData.push({ pattern: p, candidates: pool });
+    }
+
+    if (valid) {
+      // Prefer 2-group natural splits & higher candidate richness
+      const groupBonus = parts.length === 2 ? 4 : parts.length === 1 ? 2 : 0;
+      scored.push({ splitPattern, parts: partData, score: totalCount + groupBonus });
+    }
+  }
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(({ splitPattern, parts }) => ({ splitPattern, parts }));
 }
 
 export async function POST(req: NextRequest) {
@@ -138,6 +213,10 @@ export async function POST(req: NextRequest) {
 
     const groupOptionsText = songOverview
       .map((l) => {
+        const lineDigits = l.pattern.replace(/\s+/g, '');
+        const hasAnyLocked = lines[l.lineIndex]?.groups?.some((g) =>
+          g.tokens.some((t) => t.status === 'locked')
+        );
         const groupLines = l.groups.map((g) => {
           if (g.isFullyLocked) {
             return `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${g.pattern}) 🔒【用戶已鎖定，請勿改動】`;
@@ -149,7 +228,29 @@ export async function POST(req: NextRequest) {
             g.pattern
           }) 100%啱音全新備選：【${displayPool.join('、')}】`;
         });
-        return `第 ${l.lineIndex + 1} 行：\n${groupLines.join('\n')}`;
+
+        let altSplitText = '';
+        if (!hasAnyLocked && lineDigits.length >= 4 && lineDigits.length <= 8) {
+          const altSplits = getAlternativeLineSplits(
+            lineDigits,
+            l.pattern,
+            themeContext,
+            usedPhraseSet
+          );
+          if (altSplits.length > 0) {
+            const splitDesc = altSplits
+              .map((sp) => {
+                const partDesc = sp.parts
+                  .map((p, pIdx) => `組${pIdx + 1}(${p.pattern})[${p.candidates.join('、')}]`)
+                  .join(' + ');
+                return `    - 斷詞「${sp.splitPattern}」：${partDesc}`;
+              })
+              .join('\n');
+            altSplitText = `\n  🔄【全行跨組重新斷詞備選（音階總數 ${lineDigits} 不變，若單改一組仍唔順可整行重寫）】：\n${splitDesc}`;
+          }
+        }
+
+        return `第 ${l.lineIndex + 1} 行（原斷詞：${l.pattern}）：\n${groupLines.join('\n')}${altSplitText}`;
       })
       .join('\n\n');
 
@@ -159,8 +260,9 @@ export async function POST(req: NextRequest) {
 2. 【嚴格文法與句式結構檢測】：逐行把同一行各組詞磚連起來讀一次，檢查整句的粵語文法與結構是否完整合理：
    - 嚴抓「句尾懸空／缺賓語」病句：例如「受神大恩 一生愛」（及物動詞「愛」放在句尾卻沒有受詞「祢／主」，意思懸空不完整），必須改為完整結構（如「永愛祢」「獻上心」「永敬拜」「心感恩」等）。
    - 嚴抓「主謂倒錯、名詞硬拼」（如「大地月光」「頌揚月光」）、介詞結構缺方位詞（「在恩典」缺「中／裡」）、以及前後組詞性唔夾或唔 make sense 的組合。
-3. 同時抓出過度重複單字、重複詞組及偏離主題的詞組（🔒已鎖定勿動）。即使原詞來自詞庫，只要放入整行文法唔順、收尾懸空或有重複，都必須修改！
-4. 為每一處挑選 2～3 個**全新不重複**、文法完整順口且 100% 吻合該組 0243 音階的替換詞（優先選自備選庫，或原創地道協音好詞；0陽平/2陽去上入/4我你祢美永柱眼免引曙領及陰去中入/3陰平上入）。
+3. 【跨組整行重新斷詞（重要！）】：如果某一行只改最後一組或單改一組仍然唔夠順暢（例如 2023 334「受神大恩 一生愛」點改尾三字都唔自然），只要該行沒有🔒鎖定字，你可以從🔄【全行跨組重新斷詞備選】挑選更自然的斷詞組合（例如改為「202 3334」或「20 23334」或「2023334」，總音階數字必須與原行完全一致），並設定 "isLineRewrite": true、"groupIdx": 0、"targetPattern": "新斷詞音階（如 202 3334）"、"suggestedPhrases": ["用空格分隔每組的新整行歌詞1", "新整行歌詞2"]！
+4. 同時抓出過度重複單字、重複詞組及偏離主題的詞組（🔒已鎖定勿動）。即使原詞來自詞庫，只要放入整行文法唔順、收尾懸空或有重複，都必須修改！
+5. 為每一處挑選 2～3 個**全新不重複**、文法完整順口且 100% 吻合目標 0243 音階的替換詞（優先選自備選庫，或原創地道協音好詞；0陽平/2陽去上入/4我你祢美永柱眼免引曙領及陰去中入/3陰平上入）。
 
 請務必簡明精煉輸出純 JSON（每段評語限 20~35 字以內，極速回傳）：
 {
@@ -171,8 +273,9 @@ export async function POST(req: NextRequest) {
     {
       "lineIndex": 0,
       "groupIdx": 1,
-      "currentPhrase": "原詞組",
-      "targetPattern": "0243音階",
+      "isLineRewrite": false,
+      "currentPhrase": "原詞組或原整行",
+      "targetPattern": "0243音階（若 isLineRewrite 為 true 則為空格分隔的新斷詞如 202 3334）",
       "reason": "簡述修改原因（15字內）",
       "suggestedPhrases": ["推薦詞1", "推薦詞2"]
     }
@@ -199,67 +302,132 @@ ${groupOptionsText}
       9000
     );
 
-    // 嚴格驗證推薦詞是否 100% 協音
+    // 嚴格驗證推薦詞是否 100% 協音（支援單組替換與跨組整行重新斷詞）
     const sanitizedImprovements = (reviewResult.improvements || [])
-      .filter((imp) => {
-        const targetGroup = songOverview[imp.lineIndex]?.groups?.[imp.groupIdx];
-        return targetGroup && !targetGroup.isFullyLocked;
-      })
       .map((imp) => {
-      const targetPat =
-        songOverview[imp.lineIndex]?.groups?.[imp.groupIdx]?.pattern || imp.targetPattern;
-      const candidatesPool =
-        songOverview[imp.lineIndex]?.groups?.[imp.groupIdx]?.candidates || [];
+        const lineOverview = songOverview[imp.lineIndex];
+        if (!lineOverview) return null;
 
-      // 過濾出 100% 啱音且不與全曲重複的推薦詞
-      const verifiedSuggestions: string[] = [];
-      for (const phrase of imp.suggestedPhrases || []) {
-        const clean = phrase.replace(/[^\u4e00-\u9fa5]/g, '');
-        if (
-          clean.length === targetPat.length &&
-          verifyPhraseAgainstPattern(clean, targetPat).isExactMatch &&
-          clean !== imp.currentPhrase &&
-          !usedPhraseSet.has(clean)
-        ) {
-          if (!verifiedSuggestions.includes(clean)) verifiedSuggestions.push(clean);
+        if (imp.isLineRewrite) {
+          const rawLine = lines[imp.lineIndex];
+          const hasAnyLocked = rawLine?.groups?.some((g) =>
+            g.tokens.some((t) => t.status === 'locked')
+          );
+          if (hasAnyLocked) return null;
+
+          const origDigits = lineOverview.pattern.replace(/\s+/g, '');
+          const cleanNewPattern = (imp.targetPattern || '').trim().replace(/\s+/g, ' ');
+          const newDigits = cleanNewPattern.replace(/\s+/g, '');
+          if (!origDigits || newDigits !== origDigits) return null;
+
+          const patternParts = cleanNewPattern.split(' ').filter(Boolean);
+          const verifiedLineSuggestions: string[] = [];
+
+          for (const rawPhrase of imp.suggestedPhrases || []) {
+            const cleanChars = rawPhrase.replace(/[^\u4e00-\u9fa5]/g, '');
+            if (cleanChars.length !== origDigits.length) continue;
+
+            // 依新斷詞長度切分，確保每組 100% 協音
+            const segments: string[] = [];
+            let offset = 0;
+            let allPartsMatch = true;
+            for (const partPat of patternParts) {
+              const seg = cleanChars.slice(offset, offset + partPat.length);
+              offset += partPat.length;
+              if (
+                seg.length !== partPat.length ||
+                !verifyPhraseAgainstPattern(seg, partPat).isExactMatch
+              ) {
+                allPartsMatch = false;
+                break;
+              }
+              segments.push(seg);
+            }
+
+            if (allPartsMatch) {
+              const formatted = segments.join(' ');
+              if (
+                formatted !== lineOverview.fullLineText &&
+                !verifiedLineSuggestions.includes(formatted)
+              ) {
+                verifiedLineSuggestions.push(formatted);
+              }
+            }
+          }
+
+          if (verifiedLineSuggestions.length === 0) return null;
+          for (const seg of verifiedLineSuggestions[0].split(' ')) {
+            usedPhraseSet.add(seg);
+          }
+
+          return {
+            lineIndex: imp.lineIndex,
+            groupIdx: 0,
+            isLineRewrite: true,
+            currentPhrase: lineOverview.fullLineText,
+            targetPattern: cleanNewPattern,
+            reason: imp.reason || '重新斷詞令整句文法更完整流暢，緊扣主題。',
+            suggestedPhrases: verifiedLineSuggestions.slice(0, 3),
+          };
         }
-      }
 
-      // 若 AI 自創詞唔啱音或已重複，從本地高分候選庫中補充全新不重複的主題詞
-      for (const poolWord of candidatesPool) {
-        if (verifiedSuggestions.length >= 3) break;
-        if (
-          poolWord !== imp.currentPhrase &&
-          !usedPhraseSet.has(poolWord) &&
-          !verifiedSuggestions.includes(poolWord)
-        ) {
-          verifiedSuggestions.push(poolWord);
-        }
-      }
+        const targetGroup = lineOverview.groups?.[imp.groupIdx];
+        if (!targetGroup || targetGroup.isFullyLocked) return null;
 
-      // 若仍不足 1 個，放寬去重備援
-      if (verifiedSuggestions.length === 0) {
-        for (const poolWord of candidatesPool) {
-          if (poolWord !== imp.currentPhrase) {
-            verifiedSuggestions.push(poolWord);
-            break;
+        const targetPat = targetGroup.pattern || imp.targetPattern;
+        const candidatesPool = targetGroup.candidates || [];
+
+        // 過濾出 100% 啱音且不與全曲重複的推薦詞
+        const verifiedSuggestions: string[] = [];
+        for (const phrase of imp.suggestedPhrases || []) {
+          const clean = phrase.replace(/[^\u4e00-\u9fa5]/g, '');
+          if (
+            clean.length === targetPat.length &&
+            verifyPhraseAgainstPattern(clean, targetPat).isExactMatch &&
+            clean !== imp.currentPhrase &&
+            !usedPhraseSet.has(clean)
+          ) {
+            if (!verifiedSuggestions.includes(clean)) verifiedSuggestions.push(clean);
           }
         }
-      }
 
-      if (verifiedSuggestions[0]) {
-        usedPhraseSet.add(verifiedSuggestions[0]);
-      }
+        // 若 AI 自創詞唔啱音或已重複，從本地高分候選庫中補充全新不重複的主題詞
+        for (const poolWord of candidatesPool) {
+          if (verifiedSuggestions.length >= 3) break;
+          if (
+            poolWord !== imp.currentPhrase &&
+            !usedPhraseSet.has(poolWord) &&
+            !verifiedSuggestions.includes(poolWord)
+          ) {
+            verifiedSuggestions.push(poolWord);
+          }
+        }
 
-      return {
-        lineIndex: imp.lineIndex,
-        groupIdx: imp.groupIdx,
-        currentPhrase: imp.currentPhrase,
-        targetPattern: targetPat,
-        reason: imp.reason || '換用動態詞磚能讓這行詩意更鮮明，深化歌曲故事感。',
-        suggestedPhrases: verifiedSuggestions.slice(0, 3),
-      };
-    });
+        // 若仍不足 1 個，放寬去重備援
+        if (verifiedSuggestions.length === 0) {
+          for (const poolWord of candidatesPool) {
+            if (poolWord !== imp.currentPhrase) {
+              verifiedSuggestions.push(poolWord);
+              break;
+            }
+          }
+        }
+
+        if (verifiedSuggestions[0]) {
+          usedPhraseSet.add(verifiedSuggestions[0]);
+        }
+
+        return {
+          lineIndex: imp.lineIndex,
+          groupIdx: imp.groupIdx,
+          isLineRewrite: false,
+          currentPhrase: imp.currentPhrase,
+          targetPattern: targetPat,
+          reason: imp.reason || '換用動態詞磚能讓這行詩意更鮮明，深化歌曲故事感。',
+          suggestedPhrases: verifiedSuggestions.slice(0, 3),
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
 
     const responseData: GlobalThematicReview = {
       overallScore: Math.min(100, Math.max(50, reviewResult.overallScore || 85)),

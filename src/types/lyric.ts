@@ -79,6 +79,7 @@ export interface ThematicImprovement {
   targetPattern: string;
   reason: string;
   suggestedPhrases: string[];
+  isLineRewrite?: boolean;
 }
 
 export interface GlobalThematicReview {
