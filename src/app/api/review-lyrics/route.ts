@@ -209,6 +209,46 @@ export async function POST(req: NextRequest) {
           }。請務必將重複出現的組別改寫為全新不同的詞彙！`
         : '';
 
+    // 🔍 自動掃描文法不通順／名詞硬拼／句尾懸空行，生成強制文法警報給 AI
+    const pureNounTailPhrases = new Set([
+      '真盼望', '真福氣', '恩翅下', '好牧人', '全能者', '全能神', '大能神', '大能者',
+      '救贖主', '避難所', '避難處', '生命樹', '生命水', '活水泉', '施恩座', '保惠師',
+      '真理靈', '至聖者', '永恆主', '永在神', '十字架', '大救贖', '救贖恩', '拯救恩',
+      '大喜樂', '真平安', '真喜樂', '真自由', '真生命', '永生路', '新生命', '和平君',
+    ]);
+    const hangingTailRegex = /(?:一生愛|諸天敬|在恩典|深誇勝|道成肉|因信稱)$/;
+    const activePredicateRegex =
+      /(?:是|有|在|齊|同|來|必|願|要|求|請|向|為|讓|被|蒙|得|受|靠|憑|從|與|跟|愛祢|愛主|愛神|愛我|愛你|信祢|信主|信神|讚美|敬拜|高唱|歌唱|頌讚|頌揚|歌頌|禱告|祈求|呼求|仰望|盼望祢|跟從|順服|獻上|帶領|看顧|保守|扶持|醫治|安慰|拯救|賜下|賜福|照亮|充滿|降臨|掌權|作王|得勝|同行|同在|永存|長存|不變)/;
+
+    const grammarSuspiciousLines: string[] = [];
+    for (const l of songOverview) {
+      const hasUnlocked = l.groups.some((g) => !g.isFullyLocked);
+      if (!hasUnlocked || l.groups.length < 2) continue;
+
+      const lastGroupText = l.groups[l.groups.length - 1]?.currentText || '';
+      const firstGroupText = l.groups[0]?.currentText || '';
+      const compactLine = l.groups.map((g) => g.currentText).join('');
+
+      const isHangingTail = hangingTailRegex.test(compactLine);
+      const isNounPair =
+        pureNounTailPhrases.has(lastGroupText) && !activePredicateRegex.test(firstGroupText);
+      const hasNoPredicateAtAll =
+        l.groups.length >= 2 &&
+        !activePredicateRegex.test(compactLine) &&
+        pureNounTailPhrases.has(lastGroupText);
+
+      if (isHangingTail || isNounPair || hasNoPredicateAtAll) {
+        grammarSuspiciousLines.push(`第 ${l.lineIndex + 1} 行「${l.fullLineText}」`);
+      }
+    }
+
+    const grammarAlert =
+      grammarSuspiciousLines.length > 0
+        ? `\n⚠️【文法不通／名詞硬拼警報（必須修正！）】：以下行數疑似出現「名詞硬拼、缺乏動詞、或句尾懸空唔通順」：${grammarSuspiciousLines.join(
+            '、'
+          )}。請務必檢查整句語意，若唔通順請改寫動詞／詞組，或用 isLineRewrite 整行重新斷詞！`
+        : '';
+
     const usedPhraseSet = new Set(allCurrentPhrases);
 
     const groupOptionsText = songOverview
@@ -259,7 +299,7 @@ export async function POST(req: NextRequest) {
 1. 【逐句精準審核】：逐行把整句連起來大聲讀一次，檢查是否緊扣《${title}》主題與故事、語氣是否自然、起承轉合是否連貫。
 2. 【嚴格文法與句式結構檢測】：
    - 嚴抓「句尾懸空／缺賓語」病句：例如「受神大恩 一生愛」（及物動詞「愛」放在句尾卻沒有受詞「祢／主」，意思懸空不完整），必須改為完整結構（如「永愛祢」「獻上心」「永敬拜」「心感恩」等）。
-   - 嚴抓「主謂倒錯、名詞硬拼」（如「大地月光」「頌揚月光」）、介詞結構缺方位詞（「在恩典」缺「中／裡」）、以及前後組詞性唔夾或意思牽強的組合。
+   - 嚴抓「主謂倒錯、名詞硬拼」（例如「受造萬邦 真盼望」「大地月光」「頌揚月光」——兩個名詞短語硬擺埋一齊、缺乏動詞同主謂關係，完全唔通順！必須改為有動作有意義嘅句子，例如「受造萬邦 齊來敬拜／心仰望／齊頌讚」或整行重新斷詞）、介詞結構缺方位詞（「在恩典」缺「中／裡」）、以及前後組詞性唔夾或意思牽強的組合。
 3. 【唔通順／意思不合就主動思考其他組合（重要！）】：
    - 如果某一行讀起來唔順口、唔夾主題，**唔好勉強只改一兩個字交差**！你可以：
      (a) 同時修改同一行的多個組別，或轉換表達角度（例如從「神的作為」轉為「敬拜者回應」或「具體畫面」）；
@@ -290,7 +330,7 @@ export async function POST(req: NextRequest) {
 【人稱視角】：${perspective}
 
 【當前整首歌詞全貌】：
-${fullSongLyricsText}${repetitionAlert}
+${fullSongLyricsText}${repetitionAlert}${grammarAlert}
 
 【各組目標音階與 100% 啱音全新備選庫】：
 ${groupOptionsText}
