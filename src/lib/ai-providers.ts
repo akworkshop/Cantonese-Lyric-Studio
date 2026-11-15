@@ -171,8 +171,11 @@ export async function callLLMJson<T>(
           model: targetModel,
           messages,
           temperature: effectiveTemperature,
-          max_tokens: 8192,
+          max_tokens: 4096,
         };
+        if (targetModel.toLowerCase().includes('gpt-oss')) {
+          payload.reasoning_effort = 'low';
+        }
         if (useJsonFormat) {
           payload.response_format = { type: 'json_object' };
         }

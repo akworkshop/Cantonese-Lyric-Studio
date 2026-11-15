@@ -352,11 +352,12 @@ export async function POST(req: NextRequest) {
       })
       .join(isLowTpm ? '\n' : '\n\n');
 
+    const lowTpmTargetRange = unlockedLineCount >= 10 ? '6～10' : '3～6';
     const systemPrompt = isLowTpm
-      ? `粵語敬拜詩歌精修總監。逐行連讀整句（如2223 342當成2223342讀），抓出：
+      ? `粵語敬拜詩歌精修總監。必須由 L0 逐行連讀到最後一行（如2223 342當成2223342讀），切勿只改頭幾行就停，抓出：
 1.唔緊扣《${title}》、前後行唔連貫、重複字詞（🔒勿動）；
 2.句尾懸空（如「一生愛」）、名詞硬拼缺動詞（如「浩大頌詩 心盼望」「受造萬邦 真盼望」）。
-重要：只要仍有未鎖定行數，必須至少挑出 3～6 處最需要改進之處（優先從「備選」或「重斷」揀選100%啱音詞，切勿回傳空陣列）。
+重要：只要仍有未鎖定行數，必須至少挑出 ${lowTpmTargetRange} 處最需要改進之處（優先從「備選」或「重斷」揀選100%啱音詞，切勿只改1～2句或回傳空陣列）。
 若單改一組仍唔順，設 "isLineRewrite":true、"groupIdx":0，重寫整行（可用原斷詞或「重斷」新斷詞，總音階不變，空格分隔）。
 嚴守0243（0陽平/2陽去上入/4我你祢仰這記裡美永柱眼免引曙領及陰去中入/3陰平上入）。
 只輸出精簡JSON：{"overallScore":88,"themeSummary":"20字內","storyArcCritique":"20字內","improvements":[{"lineIndex":0,"groupIdx":0,"isLineRewrite":false,"currentPhrase":"原詞","targetPattern":"0243","reason":"10字內","suggestedPhrases":["詞1","詞2"]}]}`
