@@ -37,7 +37,8 @@ function getAlternativeLineSplits(
   blockedPhraseSet: Set<string>,
   maxSplits = 6,
   maxPerPart = 10,
-  includeThreeGroup = true
+  includeThreeGroup = true,
+  randomize = false
 ): { splitPattern: string; parts: { pattern: string; candidates: string[] }[] }[] {
   const n = lineDigits.length;
   if (n < 4 || n > 8) return [];
@@ -53,8 +54,10 @@ function getAlternativeLineSplits(
   for (let a = 2; a <= n - 2; a++) {
     candidateSplits.push([lineDigits.slice(0, a), lineDigits.slice(a)]);
   }
-  // 3-group splits (each >= 2, for 6..8 chars — 長歌時可跳過以節省運算與 Token)
-  if (includeThreeGroup && n >= 6) {
+  // 3-group splits: 6字永遠包含 [2,2,2]（僅1種，極快）；7-8字依長度決定
+  if (n === 6) {
+    candidateSplits.push([lineDigits.slice(0, 2), lineDigits.slice(2, 4), lineDigits.slice(4)]);
+  } else if (includeThreeGroup && n >= 7) {
     for (let a = 2; a <= n - 4; a++) {
       for (let b = 2; b <= n - a - 2; b++) {
         candidateSplits.push([
@@ -81,7 +84,12 @@ function getAlternativeLineSplits(
     let totalCount = 0;
 
     for (const p of parts) {
-      const raw = getVerifiedCandidatesForGroupPattern(p, Math.max(maxPerPart + 6, 14), false, themeContext);
+      const raw = getVerifiedCandidatesForGroupPattern(
+        p,
+        Math.max(maxPerPart + 10, 20),
+        randomize,
+        themeContext
+      );
       const fresh = raw.filter((c) => !blockedPhraseSet.has(c));
       const pool = fresh.slice(0, maxPerPart);
       const minNeeded = parts.length === 1 && p.length >= 5 ? 1 : 2;
@@ -133,6 +141,8 @@ export async function POST(req: NextRequest) {
     }
 
     const themeContext = `${title} ${meaning}`.trim();
+    // 第 3 輪起（已有淘汰詞時）啟用洗牌輪替，確保每一輪都能看到全新詞彙組合，唔會原地踏步
+    const shouldShuffle = Array.isArray(rejectedPhrases) && rejectedPhrases.length > 0;
 
     // 整理全曲歌詞文字與各組 100% 啱音詞庫備份
     const songOverview = lines.map((line, lIdx) => {
@@ -146,7 +156,7 @@ export async function POST(req: NextRequest) {
         const verifiedCandidates = getCandidatesWithLockedConstraints(
           g.tokens,
           60,
-          false,
+          shouldShuffle,
           themeContext
         );
         return {
@@ -264,8 +274,8 @@ export async function POST(req: NextRequest) {
     ).length;
     const groupPoolSize = isLowTpm
       ? unlockedLineCount >= 13
-        ? 4
-        : 6
+        ? 10
+        : 14
       : unlockedLineCount >= 13
       ? 16
       : unlockedLineCount >= 10
@@ -273,14 +283,14 @@ export async function POST(req: NextRequest) {
       : 36;
     const altSplitCount = isLowTpm
       ? unlockedLineCount >= 13
-        ? 1
-        : 2
+        ? 2
+        : 3
       : unlockedLineCount >= 13
       ? 3
       : unlockedLineCount >= 10
       ? 5
       : 7;
-    const altPartPoolSize = isLowTpm ? 4 : unlockedLineCount >= 13 ? 6 : unlockedLineCount >= 10 ? 8 : 12;
+    const altPartPoolSize = isLowTpm ? 6 : unlockedLineCount >= 13 ? 6 : unlockedLineCount >= 10 ? 8 : 12;
     const includeThreeGroup = !isLowTpm && unlockedLineCount < 13;
 
     const groupOptionsText = songOverview
@@ -318,7 +328,8 @@ export async function POST(req: NextRequest) {
             usedPhraseSet,
             altSplitCount,
             altPartPoolSize,
-            includeThreeGroup
+            includeThreeGroup,
+            shouldShuffle
           );
           if (altSplits.length > 0) {
             if (isLowTpm) {
