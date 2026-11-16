@@ -102,9 +102,10 @@ function getAlternativeLineSplits(
     }
 
     if (valid) {
-      // Prefer 2-group natural splits & higher candidate richness
-      const groupBonus = parts.length === 2 ? 4 : parts.length === 1 ? 2 : 0;
-      scored.push({ splitPattern, parts: partData, score: totalCount + groupBonus });
+      // 以「每段平均候選數」評分，避免 3 段拆法因段數多而把「完整整句(1段)」同「2段自然斷詞」擠走
+      const avgCount = totalCount / parts.length;
+      const groupBonus = parts.length === 1 ? 6 : parts.length === 2 ? 4 : 0;
+      scored.push({ splitPattern, parts: partData, score: avgCount + groupBonus });
     }
   }
 
