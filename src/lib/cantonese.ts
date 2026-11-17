@@ -1288,8 +1288,8 @@ export function getVerifiedCandidatesForGroupPattern(
     }
   }
 
-  // 2. 嚴格自然語法切分拼接（杜絕 1+1 胡亂拼字）
-  if (exactCandidates.length < Math.max(limit, 24)) {
+  // 2. 嚴格自然語法切分拼接（僅在原生完整詞庫不足 10 個時才補位，避免機械拼接詞稀釋高品質原生詞）
+  if (exactCandidates.length < Math.min(limit, 10)) {
     const len = cleanPattern.length;
     const splits: [number, number][] = [];
     if (len === 2) {
