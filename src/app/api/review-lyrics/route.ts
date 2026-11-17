@@ -341,7 +341,7 @@ export async function POST(req: NextRequest) {
       ? 5
       : 7;
     const altPartPoolSize = isLowTpm ? 6 : unlockedLineCount >= 13 ? 6 : unlockedLineCount >= 10 ? 8 : 12;
-    const includeThreeGroup = !isLowTpm && unlockedLineCount < 13;
+    const includeThreeGroup = true;
 
     const groupOptionsText = songOverview
       .map((l) => {

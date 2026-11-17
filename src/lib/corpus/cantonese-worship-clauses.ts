@@ -262,6 +262,42 @@ function buildCuratedWorshipClauses(): string[] {
     out.add(phrase);
   }
 
+  // === 8. 全 256 種 4 字音階系統化語法矩陣（嚴格區分「神聖主語」與「敬拜者主語」，零亂拼） ===
+  const divineCallPrefixes = ['求祢', '願祢', '求神', '願神', '望神', '仰望'];
+  const divineCallActions = [
+    '同行', '扶持', '垂憐', '護衛', '陪伴', '尋見', '垂顧', '憐我', '護佑', '預備',
+    '接納', '助我', '伴我', '救我', '愛我', '帶我', '領我', '照臨', '引導', '帶領',
+    '保護', '看顧', '安慰', '醫治', '拯救', '照亮', '潔淨', '釋放', '賜福', '照我',
+  ];
+  for (const dp of divineCallPrefixes) {
+    for (const da of divineCallActions) {
+      if (dp === '仰望' && ['同行', '垂憐', '憐我', '尋見'].includes(da)) continue;
+      out.add(`${dp}${da}`);
+    }
+  }
+
+  const worshipperPrefixes = [
+    '同來', '齊來', '常來', '立志', '但願', '日夜', '靜候', '靜默', '立心', '盡心',
+    '用心', '願我', '定要', '誓要', '真心', '甘心', '專心', '清心', '天天', '我來',
+    '我願', '我望', '我心', '我今', '我已', '永願', '全心', '同心', '齊心', '常心',
+  ];
+  const worshipperActions = [
+    '尋求', '祈求', '同行', '跟從', '跟隨', '順從', '步前', '望前', '靜待', '自勉',
+    '邁進', '受教', '謝恩', '念恩', '頌歌', '靜聽', '問心', '敬拜', '讚美', '仰望',
+    '信靠', '愛慕', '渴慕', '奉獻', '擺上', '宣告', '見證', '歌唱', '歌頌', '感恩',
+    '高歌', '稱謝', '禱告', '安息', '稱頌', '愛神', '靠神', '信神', '向神', '愛主',
+    '靠主', '信主', '愛祢', '靠祢', '信祢', '仰祢', '記掛', '永記',
+  ];
+  for (const wp of worshipperPrefixes) {
+    if (wp === '常心') continue;
+    for (const wa of worshipperActions) {
+      if (wp === '我已' && ['尋求', '祈求', '靜待', '靜聽', '願'].some((k) => wa.includes(k))) continue;
+      if (wp === '靜默' && ['高歌', '歌唱', '歌頌', '頌歌', '宣告'].includes(wa)) continue;
+      if (wp === '同來' && ['我'].some((k) => wa.includes(k))) continue;
+      out.add(`${wp}${wa}`);
+    }
+  }
+
   return Array.from(out);
 }
 
