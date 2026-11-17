@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  analyzeCharToken,
   getCandidatesWithLockedConstraints,
   getVerifiedCandidatesForGroupPattern,
   verifyPhraseAgainstPattern,
@@ -123,6 +124,44 @@ function getAlternativeLineSplits(
     .sort((a, b) => b.score - a.score)
     .slice(0, maxSplits)
     .map(({ splitPattern, parts }) => ({ splitPattern, parts }));
+}
+
+/**
+ * 當 AI 原創句子僅差 1～2 個字唔啱 0243 音階時，保留已啱音的字元與原本語意骨架，
+ * 僅在本地微調唔啱音的字位，避免整個丟棄 AI 原創心血而退回靜態詞庫！
+ */
+function repairNearMissPhraseWithTone(
+  aiPhrase: string,
+  targetPat: string,
+  themeContext: string,
+  blockedSet: Set<string>
+): string | null {
+  const chars = Array.from(aiPhrase.replace(/[^\u4e00-\u9fa5]/g, ''));
+  if (chars.length !== targetPat.length || chars.length < 2) return null;
+
+  let matchCount = 0;
+  const tempTokens = Array.from(targetPat).map((expectedTone, idx) => {
+    const ch = chars[idx];
+    const tok = analyzeCharToken(ch, expectedTone, idx === targetPat.length - 1);
+    const isMatched = tok.actualTone === expectedTone;
+    if (isMatched) matchCount++;
+    return {
+      expectedTone,
+      char: ch,
+      status: (isMatched ? 'locked' : 'normal') as 'locked' | 'normal',
+    };
+  });
+
+  // 至少一半以上字元已啱音才進行局部鎖字救回，保留 AI 原意
+  if (matchCount < Math.ceil(targetPat.length / 2)) return null;
+
+  const repairedCands = getCandidatesWithLockedConstraints(tempTokens, 8, false, themeContext);
+  for (const cand of repairedCands) {
+    if (!blockedSet.has(cand) && verifyPhraseAgainstPattern(cand, targetPat).isExactMatch) {
+      return cand;
+    }
+  }
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -459,21 +498,33 @@ ${groupOptionsText}
             const cleanChars = rawPhrase.replace(/[^\u4e00-\u9fa5]/g, '');
             if (cleanChars.length !== origDigits.length) continue;
 
-            // 依新斷詞長度切分，確保每組 100% 協音
+            // 依新斷詞長度切分，確保每組 100% 協音（若僅差 1～2 字唔啱音，優先局部微調救回 AI 原意）
             const segments: string[] = [];
             let offset = 0;
             let allPartsMatch = true;
             for (const partPat of patternParts) {
               const seg = cleanChars.slice(offset, offset + partPat.length);
               offset += partPat.length;
-              if (
-                seg.length !== partPat.length ||
-                !verifyPhraseAgainstPattern(seg, partPat).isExactMatch
-              ) {
+              if (seg.length !== partPat.length) {
                 allPartsMatch = false;
                 break;
               }
-              segments.push(seg);
+              if (verifyPhraseAgainstPattern(seg, partPat).isExactMatch) {
+                segments.push(seg);
+              } else {
+                const rescued = repairNearMissPhraseWithTone(
+                  seg,
+                  partPat,
+                  themeContext,
+                  usedPhraseSet
+                );
+                if (rescued) {
+                  segments.push(rescued);
+                } else {
+                  allPartsMatch = false;
+                  break;
+                }
+              }
             }
 
             if (allPartsMatch) {
@@ -535,6 +586,23 @@ ${groupOptionsText}
             !usedPhraseSet.has(clean)
           ) {
             if (!verifiedSuggestions.includes(clean)) verifiedSuggestions.push(clean);
+          }
+        }
+
+        // 若 AI 自創詞僅差 1～2 字唔啱音，優先局部鎖定已啱音字元並微調救回 AI 原意
+        if (verifiedSuggestions.length === 0) {
+          for (const phrase of imp.suggestedPhrases || []) {
+            const clean = phrase.replace(/[^\u4e00-\u9fa5]/g, '');
+            const rescued = repairNearMissPhraseWithTone(
+              clean,
+              targetPat,
+              themeContext,
+              usedPhraseSet
+            );
+            if (rescued && rescued !== imp.currentPhrase && !verifiedSuggestions.includes(rescued)) {
+              verifiedSuggestions.push(rescued);
+              if (verifiedSuggestions.length >= 2) break;
+            }
           }
         }
 
