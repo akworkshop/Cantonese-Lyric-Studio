@@ -1342,6 +1342,7 @@ export function getVerifiedCandidatesForGroupPattern(
 
       for (const lw of leftWords) {
         if (leftLen === 1 && !ALLOWED_SINGLE_PREFIX.has(lw)) continue;
+        let perLeftCount = 0;
         for (const rw of rightWords) {
           if (cleanPattern.length - leftLen === 1 && !ALLOWED_SINGLE_SUFFIX.has(rw)) continue;
           if (!isNaturalCombinedPhrase(lw, rw)) continue;
@@ -1356,6 +1357,8 @@ export function getVerifiedCandidatesForGroupPattern(
           ) {
             seen.add(combined);
             combinedCandidates.push(combined);
+            perLeftCount++;
+            if (perLeftCount >= 2) break;
             if (exactCandidates.length + combinedCandidates.length >= Math.max(limit * 2, 80)) {
               break;
             }
@@ -1483,7 +1486,16 @@ export function getCandidatesWithLockedConstraints(
     const lockedSuffix = tokens.slice(lastUnlocked + 1).map((t) => t.char || '').join('');
     const middleCands = getVerifiedCandidatesForGroupPattern(middlePat, 40, randomize, themeText);
 
+    const corpusSet = middlePat.length === 1 ? new Set(RAW_CANTONESE_WORSHIP_CORPUS) : null;
+    const prefixTail = lockedPrefix.slice(-1);
+    const suffixHead = lockedSuffix.slice(0, 1);
+
     for (const mc of middleCands) {
+      if (corpusSet) {
+        const pairLeft = `${prefixTail}${mc}`;
+        const pairRight = `${mc}${suffixHead}`;
+        if (!corpusSet.has(pairLeft) && !corpusSet.has(pairRight)) continue;
+      }
       const combined = `${lockedPrefix}${mc}${lockedSuffix}`;
       if (!seen.has(combined) && matchesLocked(combined)) {
         const check = verifyPhraseAgainstPattern(combined, fullPat);
