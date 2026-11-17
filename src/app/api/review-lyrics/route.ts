@@ -75,6 +75,12 @@ function getAlternativeLineSplits(
     score: number;
   }[] = [];
 
+  const lineEndForbidden = new Set([
+    '為要', '為叫', '為了', '因著', '因祢', '因主', '因愛', '縱使', '哪怕', '就算',
+    '直到', '自此', '卻是', '莫非', '若非', '既然', '雖然', '無論', '只要', '唯有',
+    '如同', '仿似', '猶如', '即使', '儘管', '然而', '可是', '但是', '因此', '所以',
+  ]);
+
   for (const parts of candidateSplits) {
     const splitPattern = parts.join(' ');
     if (splitPattern === normalizedCurrent) continue;
@@ -83,14 +89,18 @@ function getAlternativeLineSplits(
     let valid = true;
     let totalCount = 0;
 
-    for (const p of parts) {
+    for (let partIdx = 0; partIdx < parts.length; partIdx++) {
+      const p = parts[partIdx];
+      const isLastPart = partIdx === parts.length - 1;
       const raw = getVerifiedCandidatesForGroupPattern(
         p,
-        Math.max(maxPerPart + 10, 20),
+        Math.max(maxPerPart + 12, 24),
         randomize,
         themeContext
       );
-      const fresh = raw.filter((c) => !blockedPhraseSet.has(c));
+      const fresh = raw.filter(
+        (c) => !blockedPhraseSet.has(c) && (!isLastPart || !lineEndForbidden.has(c))
+      );
       const pool = fresh.slice(0, maxPerPart);
       const minNeeded = parts.length === 1 && p.length >= 5 ? 1 : 2;
       if (pool.length < minNeeded) {
