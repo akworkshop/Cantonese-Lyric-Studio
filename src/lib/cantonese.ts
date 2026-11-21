@@ -1680,13 +1680,14 @@ export function getCandidatesWithLockedConstraints(
     }
   }
 
-  // C. 兜底逐字填補（任意零散鎖定字，從單字庫精選音階吻合之常用字）
+  // C. 兜底逐字填補（任意零散鎖定字，必須與相鄰字組成真實詞彙，絕不硬塞「主手顧／主掌顧」等無意義單字）
   if (results.length < limit) {
     const unlockedPositions = tokens
       .map((t, idx) => (t.status !== 'locked' ? { idx, tone: t.expectedTone } : null))
       .filter(Boolean) as { idx: number; tone: string }[];
 
     if (unlockedPositions.length > 0 && unlockedPositions.length <= 2) {
+      const corpusSet = new Set(RAW_CANTONESE_WORSHIP_CORPUS);
       const candLists = unlockedPositions.map((pos) => {
         const raw = VERIFIED_CANTONESE_WORSHIP_CHARS[pos.tone] || [];
         return raw.map((c) => c.replace(/\(.*\)/, '')).filter(Boolean).slice(0, 20);
@@ -1694,7 +1695,16 @@ export function getCandidatesWithLockedConstraints(
 
       if (unlockedPositions.length === 1) {
         const pos = unlockedPositions[0];
+        const leftNeighbor = pos.idx > 0 ? tokens[pos.idx - 1]?.char || '' : '';
+        const rightNeighbor = pos.idx < tokens.length - 1 ? tokens[pos.idx + 1]?.char || '' : '';
         for (const ch of candLists[0]) {
+          const bondLeft = leftNeighbor ? corpusSet.has(`${leftNeighbor}${ch}`) : false;
+          const bondRight = rightNeighbor ? corpusSet.has(`${ch}${rightNeighbor}`) : false;
+          if (pos.idx === tokens.length - 2 && rightNeighbor) {
+            if (!bondRight) continue;
+          } else if (!bondLeft && !bondRight) {
+            continue;
+          }
           const chars = tokens.map((t) => t.char || '＿');
           chars[pos.idx] = ch;
           const combined = chars.join('');

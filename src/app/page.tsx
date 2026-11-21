@@ -1479,6 +1479,7 @@ export default function CantoneseLyricStudioPage() {
           meaning,
           lines,
           perspective,
+          rejectedPhrases: rejectedPhrasesRef.current,
           aiConfig,
         }),
       });
@@ -1579,9 +1580,22 @@ export default function CantoneseLyricStudioPage() {
 
   // 套用單一局部優化或整行重組詞磚
   const handleApplyImprovement = (
-    imp: { lineIndex: number; groupIdx: number; targetPattern?: string; isLineRewrite?: boolean },
+    imp: {
+      lineIndex: number;
+      groupIdx: number;
+      currentPhrase?: string;
+      targetPattern?: string;
+      isLineRewrite?: boolean;
+    },
     newPhrase: string
   ) => {
+    if (imp.currentPhrase) {
+      for (const rej of [imp.currentPhrase, ...imp.currentPhrase.split(/\s+/).filter(Boolean)]) {
+        if (rej && !rejectedPhrasesRef.current.includes(rej)) {
+          rejectedPhrasesRef.current.push(rej);
+        }
+      }
+    }
     const nextLines = applyImprovementToLines(lines, imp, newPhrase);
     commitLinesUpdate(nextLines);
     showToast(`已套用「${newPhrase}」`);
@@ -1594,6 +1608,13 @@ export default function CantoneseLyricStudioPage() {
     for (const imp of thematicReview.improvements) {
       const bestPhrase = imp.suggestedPhrases[0];
       if (!bestPhrase) continue;
+      if (imp.currentPhrase) {
+        for (const rej of [imp.currentPhrase, ...imp.currentPhrase.split(/\s+/).filter(Boolean)]) {
+          if (rej && !rejectedPhrasesRef.current.includes(rej)) {
+            rejectedPhrasesRef.current.push(rej);
+          }
+        }
+      }
       nextLines = applyImprovementToLines(nextLines, imp, bestPhrase);
     }
     commitLinesUpdate(nextLines);
