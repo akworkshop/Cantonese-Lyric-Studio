@@ -263,7 +263,7 @@ function buildCuratedWorshipClauses(): string[] {
   }
 
   // === 8. 全 256 種 4 字音階系統化語法矩陣（嚴格區分「神聖主語」與「敬拜者主語」，零亂拼） ===
-  const divineCallPrefixes = ['求祢', '願祢', '求神', '願神', '望神', '仰望'];
+  const divineCallPrefixes = ['求祢', '願祢', '求神', '願神', '望神'];
   const divineCallActions = [
     '同行', '扶持', '垂憐', '護衛', '陪伴', '尋見', '垂顧', '憐我', '護佑', '預備',
     '接納', '助我', '伴我', '救我', '愛我', '帶我', '領我', '照臨', '引導', '帶領',
@@ -271,7 +271,6 @@ function buildCuratedWorshipClauses(): string[] {
   ];
   for (const dp of divineCallPrefixes) {
     for (const da of divineCallActions) {
-      if (dp === '仰望' && ['同行', '垂憐', '憐我', '尋見'].includes(da)) continue;
       out.add(`${dp}${da}`);
     }
   }
