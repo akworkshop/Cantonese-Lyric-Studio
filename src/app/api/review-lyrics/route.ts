@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   analyzeCharToken,
+  auditLyricLineGrammar,
   classifyPhraseGrammarRole,
   getCandidatesWithLockedConstraints,
   getVerifiedCandidatesForGroupPattern,
+  LINE_END_FORBIDDEN_CONNECTIVES,
   verifyPhraseAgainstPattern,
 } from '@/lib/cantonese';
 import { callLLMJson } from '@/lib/ai-providers';
@@ -77,12 +79,6 @@ function getAlternativeLineSplits(
     score: number;
   }[] = [];
 
-  const lineEndForbidden = new Set([
-    '為要', '為叫', '為了', '因著', '因祢', '因主', '因愛', '縱使', '哪怕', '就算',
-    '直到', '自此', '卻是', '莫非', '若非', '既然', '雖然', '無論', '只要', '唯有',
-    '如同', '仿似', '猶如', '即使', '儘管', '然而', '可是', '但是', '因此', '所以',
-  ]);
-
   for (const parts of candidateSplits) {
     const splitPattern = parts.join(' ');
     if (splitPattern === normalizedCurrent) continue;
@@ -101,7 +97,7 @@ function getAlternativeLineSplits(
         themeContext
       );
       const fresh = raw.filter(
-        (c) => !blockedPhraseSet.has(c) && (!isLastPart || !lineEndForbidden.has(c))
+        (c) => !blockedPhraseSet.has(c) && (!isLastPart || !LINE_END_FORBIDDEN_CONNECTIVES.has(c))
       );
       const pool = fresh.slice(0, maxPerPart);
       const minNeeded = parts.length === 1 && p.length >= 5 ? 1 : 2;
@@ -275,40 +271,17 @@ export async function POST(req: NextRequest) {
           }。請務必將重複出現的組別改寫為全新不同的詞彙！`
         : '';
 
-    // 🔍 自動掃描文法不通順／名詞硬拼／句尾懸空行，生成強制文法警報給 AI
-    const pureNounTailPhrases = new Set([
-      '真盼望', '心盼望', '真福氣', '恩翅下', '好牧人', '全能者', '全能神', '大能神', '大能者',
-      '救贖主', '避難所', '避難處', '生命樹', '生命水', '活水泉', '施恩座', '保惠師',
-      '真理靈', '至聖者', '永恆主', '永在神', '十字架', '大救贖', '救贖恩', '拯救恩',
-      '大喜樂', '真平安', '真喜樂', '真自由', '真生命', '永生路', '新生命', '和平君',
-    ]);
-    const hangingTailRegex = /(?:一生愛|諸天敬|在恩典|深誇勝|道成肉|因信稱|照亮心)$/;
-    const activePredicateRegex =
-      /(?:是|有|在|齊|同|來|必|願|要|求|請|向|為|讓|被|蒙|得|受|靠|憑|從|與|跟|愛祢|愛主|愛神|愛我|愛你|信祢|信主|信神|讚美|敬拜|高唱|歌唱|頌讚|頌揚|歌頌|禱告|祈求|呼求|仰望|盼望祢|跟從|順服|獻上|帶領|看顧|保守|扶持|醫治|安慰|拯救|賜下|賜福|照亮|充滿|降臨|掌權|作王|得勝|同行|同在|永存|長存|不變)/;
-
+    // 🔍 使用統一文法引擎掃描文法不通順／名詞硬拼／句尾懸空／句尾連接詞行，生成強制文法警報給 AI
     const grammarSuspiciousLines: string[] = [];
     for (const l of songOverview) {
       const hasUnlocked = l.groups.some((g) => !g.isFullyLocked);
-      if (!hasUnlocked || l.groups.length < 2) continue;
+      if (!hasUnlocked) continue;
 
-      const lastGroupText = l.groups[l.groups.length - 1]?.currentText || '';
-      const firstGroupText = l.groups[0]?.currentText || '';
-      const compactLine = l.groups.map((g) => g.currentText).join('');
-
-      const isHangingTail = hangingTailRegex.test(compactLine);
-      const role1 = classifyPhraseGrammarRole(firstGroupText);
-      const role2 = classifyPhraseGrammarRole(lastGroupText);
-      const isDoubleNounOrNoVerb =
-        (role1 === 'NP' || role1 === 'ADV') && role2 === 'NP';
-      const isNounPair =
-        pureNounTailPhrases.has(lastGroupText) && !activePredicateRegex.test(firstGroupText);
-      const hasNoPredicateAtAll =
-        l.groups.length >= 2 &&
-        !activePredicateRegex.test(compactLine) &&
-        pureNounTailPhrases.has(lastGroupText);
-
-      if (isHangingTail || isDoubleNounOrNoVerb || isNounPair || hasNoPredicateAtAll) {
-        grammarSuspiciousLines.push(`第 ${l.lineIndex + 1} 行「${l.fullLineText}」`);
+      const audit = auditLyricLineGrammar(l.groups.map((g) => g.currentText));
+      if (!audit.isNatural) {
+        grammarSuspiciousLines.push(
+          `第 ${l.lineIndex + 1} 行「${l.fullLineText}」(${audit.issue})`
+        );
       }
     }
 

@@ -103,6 +103,66 @@ export function classifyPhraseGrammarRole(phrase: string): PhraseGrammarRole {
   return 'VP';
 }
 
+export const LINE_END_FORBIDDEN_CONNECTIVES = new Set([
+  '為要', '為叫', '為了', '因著', '因祢', '因主', '因愛', '縱使', '哪怕', '就算',
+  '直到', '自此', '卻是', '莫非', '若非', '既然', '雖然', '無論', '只要', '唯有',
+  '如同', '仿似', '猶如', '即使', '儘管', '然而', '可是', '但是', '因此', '所以',
+]);
+
+const PURE_NOUN_TAIL_PHRASES = new Set([
+  '真盼望', '心盼望', '真福氣', '恩翅下', '好牧人', '全能者', '全能神', '大能神', '大能者',
+  '救贖主', '避難所', '避難處', '生命樹', '生命水', '活水泉', '施恩座', '保惠師',
+  '真理靈', '至聖者', '永恆主', '永在神', '十字架', '大救贖', '救贖恩', '拯救恩',
+  '大喜樂', '真平安', '真喜樂', '真自由', '真生命', '永生路', '新生命', '和平君',
+]);
+
+const HANGING_TAIL_REGEX = /(?:一生愛|諸天敬|在恩典|深誇勝|道成肉|因信稱|照亮心|仰望陪伴)$/;
+
+/**
+ * 統一整行粵語文法結構審核器（供第一輪生成與第二輪全局精修共用）：
+ * 1. 禁止句尾懸空／缺賓語／缺方位詞
+ * 2. 禁止句尾放置連接詞或純介詞（如「帶領 為要」）
+ * 3. 禁止無動詞「名詞＋名詞」或「狀語＋名詞」硬拼（如「受造萬邦 真盼望」）
+ * 4. 禁止代名詞自相矛盾或稱謂堆疊（如「主我神」「你與祢同組混用」）
+ */
+export function auditLyricLineGrammar(groupTexts: string[]): {
+  isNatural: boolean;
+  issue?: string;
+} {
+  const nonEmpty = groupTexts.map((g) => g.replace(/[^\u4e00-\u9fa5]/g, '')).filter(Boolean);
+  if (nonEmpty.length === 0) return { isNatural: true };
+
+  const compactLine = nonEmpty.join('');
+  const lastGroup = nonEmpty[nonEmpty.length - 1];
+
+  if (HANGING_TAIL_REGEX.test(compactLine)) {
+    return { isNatural: false, issue: '句尾懸空或缺少受詞／方位詞' };
+  }
+  if (LINE_END_FORBIDDEN_CONNECTIVES.has(lastGroup)) {
+    return { isNatural: false, issue: `句尾不可放連接詞「${lastGroup}」` };
+  }
+  if (/(?:主我神|神我主|我主神|真主)/.test(compactLine)) {
+    return { isNatural: false, issue: '稱謂堆疊或非現代粵語敬拜用語' };
+  }
+  if (compactLine.includes('你') && compactLine.includes('祢')) {
+    return { isNatural: false, issue: '同一行內「你」與「祢」代名詞混用' };
+  }
+
+  if (nonEmpty.length >= 2) {
+    const roles = nonEmpty.map((g) => classifyPhraseGrammarRole(g));
+    const hasPredicate = roles.some((r) => r === 'VP' || r === 'CLAUSE');
+    const lastRole = roles[roles.length - 1];
+    if (!hasPredicate || (PURE_NOUN_TAIL_PHRASES.has(lastGroup) && roles[0] !== 'CLAUSE')) {
+      return { isNatural: false, issue: '名詞硬拼／整行缺乏動詞謂語' };
+    }
+    if (roles[0] === 'ADV' && lastRole === 'NP') {
+      return { isNatural: false, issue: '狀語後接純名詞，缺乏主謂動作' };
+    }
+  }
+
+  return { isNatural: true };
+}
+
 /**
  * 基督教神學與粵語詩歌常用字詞優先審音表（補充神學代名詞與詩歌文讀首選音）
  */
