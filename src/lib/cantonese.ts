@@ -116,7 +116,7 @@ const PURE_NOUN_TAIL_PHRASES = new Set([
   '大喜樂', '真平安', '真喜樂', '真自由', '真生命', '永生路', '新生命', '和平君',
 ]);
 
-const HANGING_TAIL_REGEX = /(?:一生愛|諸天敬|在恩典|深誇勝|道成肉|因信稱|照亮心|仰望陪伴)$/;
+const HANGING_TAIL_REGEX = /(?:一生愛|諸天敬|在恩典|深誇勝|道成肉|因信稱|照亮心|仰望陪伴|手顧|掌顧|驚顧|境顧)$/;
 
 /**
  * 統一整行粵語文法結構審核器（供第一輪生成與第二輪全局精修共用）：
@@ -1661,7 +1661,12 @@ export function getCandidatesWithLockedConstraints(
       if (corpusSet) {
         const pairLeft = `${prefixTail}${mc}`;
         const pairRight = `${mc}${suffixHead}`;
-        if (!corpusSet.has(pairLeft) && !corpusSet.has(pairRight)) continue;
+        const triMid = `${prefixTail}${mc}${suffixHead}`;
+        if (lockedSuffix.length === 1) {
+          if (!corpusSet.has(pairRight) && !corpusSet.has(triMid)) continue;
+        } else if (!corpusSet.has(pairLeft) && !corpusSet.has(pairRight)) {
+          continue;
+        }
       }
       const combined = `${lockedPrefix}${mc}${lockedSuffix}`;
       if (!seen.has(combined) && matchesLocked(combined)) {
