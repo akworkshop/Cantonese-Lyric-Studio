@@ -8,10 +8,49 @@ import {
 } from '@/types/lyric';
 import {
   ALL_EXPANDED_WORSHIP_CORPUS,
+  BIBLICAL_FIGURES_CORPUS,
+  BIBLICAL_METAPHORS_CORPUS,
   CANTONESE_WORSHIP_CLAUSES_CORPUS,
+  INTIMACY_PRAYER_CORPUS,
+  NATURE_CREATION_CORPUS,
+  SCRIPTURE_PHRASE_CORPUS,
+  SPIRITUAL_WARFARE_CORPUS,
 } from '@/lib/corpus';
 
 const TIER2_CLAUSE_SET = new Set(CANTONESE_WORSHIP_CLAUSES_CORPUS);
+
+const CORPUS_TAG_SETS: { triggers: RegExp; set: Set<string>; bonus: number }[] = [
+  {
+    triggers: /(爭戰|得勝|誇勝|掌權|作王|君王|破開|衝破|擊退|軍裝|剛強|壯膽|黑暗|陰間)/,
+    set: new Set(SPIRITUAL_WARFARE_CORPUS),
+    bonus: 12,
+  },
+  {
+    triggers: /(渴慕|親近|禱告|祈禱|祈求|安靜|等候|靜候|微聲|內室|傾訴|相遇|眼淚|傷痛|安慰)/,
+    set: new Set(INTIMACY_PRAYER_CORPUS),
+    bonus: 12,
+  },
+  {
+    triggers: /(創造|宇宙|穹蒼|星宿|晨曦|破曉|大海|江河|高山|四季|大地|春雨|甘霖|自然|萬物)/,
+    set: new Set(NATURE_CREATION_CORPUS),
+    bonus: 12,
+  },
+  {
+    triggers: /(比喻|如同|好像|窯匠|泥土|瓦器|麥子|如鹿|如鷹|蘆葦|燈火|葡萄|靈魂的錨)/,
+    set: new Set(BIBLICAL_METAPHORS_CORPUS),
+    bonus: 12,
+  },
+  {
+    triggers: /(約書亞|迦勒|摩西|大衛|亞伯拉罕|約瑟|但以理|保羅|彼得|以利亞|應許之地|信心)/,
+    set: new Set(BIBLICAL_FIGURES_CORPUS),
+    bonus: 12,
+  },
+  {
+    triggers: /(聖經|詩篇|經文|牧人|耶和華|真道|真理|應許)/,
+    set: new Set(SCRIPTURE_PHRASE_CORPUS),
+    bonus: 8,
+  },
+];
 
 export type PhraseGrammarRole = 'NP' | 'VP' | 'ADV' | 'CLAUSE';
 
@@ -1211,6 +1250,13 @@ export function scorePhraseByTheme(phrase: string, themeText = ''): number {
           score += 3;
         }
       }
+    }
+  }
+
+  // 3. 命中整個專屬語料庫 Tag（例如爭戰、親近禱告、自然造化、比喻、信心人物、聖經金句）
+  for (const tag of CORPUS_TAG_SETS) {
+    if (tag.triggers.test(themeText) && tag.set.has(phrase)) {
+      score += tag.bonus;
     }
   }
 
