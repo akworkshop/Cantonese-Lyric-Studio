@@ -6,7 +6,63 @@ import {
   TokenStatus,
   VocalErgonomicsInfo,
 } from '@/types/lyric';
-import { ALL_EXPANDED_WORSHIP_CORPUS } from '@/lib/corpus';
+import {
+  ALL_EXPANDED_WORSHIP_CORPUS,
+  CANTONESE_WORSHIP_CLAUSES_CORPUS,
+} from '@/lib/corpus';
+
+const TIER2_CLAUSE_SET = new Set(CANTONESE_WORSHIP_CLAUSES_CORPUS);
+
+export type PhraseGrammarRole = 'NP' | 'VP' | 'ADV' | 'CLAUSE';
+
+/**
+ * 自動識別 2～7 字粵語詞組的語法角色，用於避免「名詞＋名詞」硬拼與重複堆疊：
+ * - NP: 純名詞短語（如「受造萬邦」「浩瀚宇宙」「好牧人」）
+ * - ADV: 時地／處境／介詞狀語（如「在主愛中」「在風浪裡」「縱使黑夜」）
+ * - VP: 動詞／謂語短語（如「齊來敬拜」「心仰望」「賜平安」「照亮我」）
+ * - CLAUSE: 完整主謂短句（如「主看顧我」「我愛祢」「神同在」）
+ */
+export function classifyPhraseGrammarRole(phrase: string): PhraseGrammarRole {
+  const clean = phrase.replace(/[^\u4e00-\u9fa5]/g, '');
+  if (!clean) return 'NP';
+
+  // 1. 完整主謂短句（明確代詞/神聖主語開頭 + 動詞）
+  const hasSubjectHead = /^(?:我心|我靈|我身|我|祢|你|祂|主|神|天父|基督|聖靈|救主|父神|真光|主恩|主愛|神恩|神愛|慈愛|恩典)/.test(
+    clean
+  );
+  const hasVerb =
+    /[愛信靠望仰看聽唱頌讚敬拜求祈禱賜領引導保護守救贖赦醫慰行走跟隨順服獻舉尊崇宣揚傳照亮充滿降臨掌作勝破開湧吹顯彰念尋等知撫抱扶托伴陪洗更新醒燃得蒙是有]/.test(
+      clean
+    );
+
+  // 2. 介詞／處境／連接詞開頭或方位詞結尾 -> 狀語 ADV
+  if (
+    /^(?:在|於|縱|哪|就|直|自|從|當|若|雖)/.test(clean) ||
+    /[裡裏中]$/.test(clean)
+  ) {
+    if (clean.length >= 5 && hasVerb) return 'CLAUSE';
+    return 'ADV';
+  }
+
+  if (hasSubjectHead && hasVerb && clean.length >= 3) {
+    // 排除名詞化稱謂如「主耶穌」「真神」
+    if (!/(?:耶穌|基督|聖靈|救主|牧人|君王|父神|真神)$/.test(clean)) {
+      return 'CLAUSE';
+    }
+  }
+
+  // 3. 明顯名詞詞尾且無動詞 -> NP
+  if (
+    !hasVerb ||
+    /(?:萬邦|萬民|萬代|眾生|宇宙|大地|世界|世間|月光|亮光|星光|晨光|真光|盼望|福氣|牧人|全能者|全能神|大能神|救贖主|避難所|避難處|生命樹|生命水|活水泉|施恩座|保惠師|真理靈|至聖者|永恆主|永在神|十字架|大救贖|和平君|榮耀冠)$/.test(
+      clean
+    )
+  ) {
+    return 'NP';
+  }
+
+  return 'VP';
+}
 
 /**
  * 基督教神學與粵語詩歌常用字詞優先審音表（補充神學代名詞與詩歌文讀首選音）
@@ -1371,10 +1427,15 @@ export function getVerifiedCandidatesForGroupPattern(
     }
   }
 
-  // 1. 人手精選／真實完整詞庫（exactCandidates）擁有最高優先級，永遠排在任何拼接詞（combinedCandidates）前面！
-  // 2. 分別在各自群組內依歌曲主題契合度排序，徹底杜絕拼接怪詞因為蹭了關鍵字而篡位排到真實好詞前面！
+  // 1. Tier 1（詩意精選庫）永遠優先於 Tier 2（系統句式矩陣），避免平庸萬用句淹沒詩意金句！
+  // 2. 同層級內再依歌曲主題契合度排序；exactCandidates 永遠排在任何拼接詞前面。
+  const rankPhrase = (p: string) =>
+    (TIER2_CLAUSE_SET.has(p) ? 0 : 25) + (themeText.trim() ? scorePhraseByTheme(p, themeText) : 0);
+
+  if (!randomize) {
+    exactCandidates.sort((a, b) => rankPhrase(b) - rankPhrase(a));
+  }
   if (themeText.trim()) {
-    exactCandidates.sort((a, b) => scorePhraseByTheme(b, themeText) - scorePhraseByTheme(a, themeText));
     combinedCandidates.sort((a, b) => scorePhraseByTheme(b, themeText) - scorePhraseByTheme(a, themeText));
   }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   analyzeCharToken,
+  classifyPhraseGrammarRole,
   getCandidatesWithLockedConstraints,
   getVerifiedCandidatesForGroupPattern,
   verifyPhraseAgainstPattern,
@@ -295,6 +296,10 @@ export async function POST(req: NextRequest) {
       const compactLine = l.groups.map((g) => g.currentText).join('');
 
       const isHangingTail = hangingTailRegex.test(compactLine);
+      const role1 = classifyPhraseGrammarRole(firstGroupText);
+      const role2 = classifyPhraseGrammarRole(lastGroupText);
+      const isDoubleNounOrNoVerb =
+        (role1 === 'NP' || role1 === 'ADV') && role2 === 'NP';
       const isNounPair =
         pureNounTailPhrases.has(lastGroupText) && !activePredicateRegex.test(firstGroupText);
       const hasNoPredicateAtAll =
@@ -302,7 +307,7 @@ export async function POST(req: NextRequest) {
         !activePredicateRegex.test(compactLine) &&
         pureNounTailPhrases.has(lastGroupText);
 
-      if (isHangingTail || isNounPair || hasNoPredicateAtAll) {
+      if (isHangingTail || isDoubleNounOrNoVerb || isNounPair || hasNoPredicateAtAll) {
         grammarSuspiciousLines.push(`第 ${l.lineIndex + 1} 行「${l.fullLineText}」`);
       }
     }
@@ -357,7 +362,22 @@ export async function POST(req: NextRequest) {
           }
           // 優先呈現全曲尚未用過且未被淘汰的新鮮詞彙供 AI 替換
           const nonRejected = g.candidates.filter((c) => !rejectedPhraseSet.has(c));
-          const freshCandidates = nonRejected.filter((c) => !usedPhraseSet.has(c));
+          let freshCandidates = nonRejected.filter((c) => !usedPhraseSet.has(c));
+          // 詞性互補過濾：若前組已屬名詞組(NP)或狀語(ADV)，後組自動排除純名詞(NP)，優先呈獻動詞／謂語(VP/CLAUSE)
+          if (g.groupIdx > 0 && l.groups[0]) {
+            const prevRole = classifyPhraseGrammarRole(l.groups[0].currentText);
+            if (prevRole === 'NP' || prevRole === 'ADV') {
+              const verbFirst = (freshCandidates.length >= 4 ? freshCandidates : nonRejected).filter(
+                (c) => {
+                  const r = classifyPhraseGrammarRole(c);
+                  return r === 'VP' || r === 'CLAUSE';
+                }
+              );
+              if (verbFirst.length >= 4) {
+                freshCandidates = verbFirst;
+              }
+            }
+          }
           const displayPool = (freshCandidates.length >= 4 ? freshCandidates : nonRejected).slice(
             0,
             groupPoolSize
