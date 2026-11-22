@@ -202,7 +202,7 @@ export async function POST(req: NextRequest) {
           g.tokens.length > 0 && g.tokens.every((t) => t.status === 'locked');
         const verifiedCandidates = getCandidatesWithLockedConstraints(
           g.tokens,
-          60,
+          80,
           shouldShuffle,
           themeContext
         );
@@ -302,24 +302,45 @@ export async function POST(req: NextRequest) {
     ).length;
     const groupPoolSize = isLowTpm
       ? unlockedLineCount >= 13
-        ? 10
-        : 14
-      : unlockedLineCount >= 13
-      ? 16
-      : unlockedLineCount >= 10
-      ? 25
-      : 36;
+        ? 14
+        : 20
+      : unlockedLineCount >= 14
+      ? 26
+      : 30;
     const altSplitCount = isLowTpm
       ? unlockedLineCount >= 13
         ? 2
         : 3
       : unlockedLineCount >= 13
-      ? 3
+      ? 4
       : unlockedLineCount >= 10
       ? 5
       : 7;
-    const altPartPoolSize = isLowTpm ? 6 : unlockedLineCount >= 13 ? 6 : unlockedLineCount >= 10 ? 8 : 12;
+    const altPartPoolSize = isLowTpm ? 6 : unlockedLineCount >= 13 ? 7 : unlockedLineCount >= 10 ? 9 : 12;
     const includeThreeGroup = true;
+
+    // 前綴多樣性抽樣：每個兩字開頭在第一輪最多只取 2 個，避免 30 個選項看起來全部同一個開頭
+    const pickDiversePhrases = (pool: string[], limit: number): string[] => {
+      const picked: string[] = [];
+      const prefixCount = new Map<string, number>();
+      const overflow: string[] = [];
+      for (const item of pool) {
+        if (picked.length >= limit) break;
+        const prefix = item.slice(0, 2);
+        const cnt = prefixCount.get(prefix) || 0;
+        if (cnt < 2) {
+          picked.push(item);
+          prefixCount.set(prefix, cnt + 1);
+        } else {
+          overflow.push(item);
+        }
+      }
+      for (const item of overflow) {
+        if (picked.length >= limit) break;
+        picked.push(item);
+      }
+      return picked;
+    };
 
     const groupOptionsText = songOverview
       .map((l) => {
@@ -351,10 +372,8 @@ export async function POST(req: NextRequest) {
               }
             }
           }
-          const displayPool = (freshCandidates.length >= 4 ? freshCandidates : nonRejected).slice(
-            0,
-            groupPoolSize
-          );
+          const sourcePool = freshCandidates.length >= 4 ? freshCandidates : nonRejected;
+          const displayPool = pickDiversePhrases(sourcePool, groupPoolSize);
           return isLowTpm
             ? `G${g.groupIdx + 1}[${g.pattern}]「${g.currentText}」備選:${displayPool.join('、')}`
             : `  • 第 ${g.groupIdx + 1} 組「${g.currentText}」(音階: ${
