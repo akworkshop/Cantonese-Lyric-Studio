@@ -277,6 +277,22 @@ export default function CantoneseLyricStudioPage() {
   // 📱 手機觸控左右滑動 (Swipe Left / Right) 切換「歌曲與0243譜」與「填詞畫布」
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
+  const tabScrollPositionsRef = useRef<{ config: number; editor: number }>({
+    config: 0,
+    editor: 0,
+  });
+
+  const switchMobileTab = (nextTab: 'config' | 'editor') => {
+    if (nextTab === mobileTab) return;
+    tabScrollPositionsRef.current[mobileTab] = window.scrollY;
+    setMobileTab(nextTab);
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        top: tabScrollPositionsRef.current[nextTab] || 0,
+        behavior: 'instant' as ScrollBehavior,
+      });
+    });
+  };
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
@@ -292,10 +308,10 @@ export default function CantoneseLyricStudioPage() {
     if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
       if (deltaX < 0) {
         // 向左滑 (Swipe Left) -> 進入填詞畫布
-        setMobileTab('editor');
+        switchMobileTab('editor');
       } else {
         // 向右滑 (Swipe Right) -> 進入歌曲設定與 0243 譜
-        setMobileTab('config');
+        switchMobileTab('config');
       }
     }
     touchStartXRef.current = null;
@@ -2002,7 +2018,7 @@ export default function CantoneseLyricStudioPage() {
         <div className="block lg:hidden px-3 py-1.5 bg-zinc-50/70">
           <div className="flex p-1 bg-zinc-200/70 rounded-xl text-xs font-semibold shadow-inner">
             <button
-              onClick={() => setMobileTab('config')}
+              onClick={() => switchMobileTab('config')}
               className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
                 mobileTab === 'config'
                   ? 'bg-white text-zinc-900 shadow-xs font-bold'
@@ -2013,7 +2029,7 @@ export default function CantoneseLyricStudioPage() {
               <span>1. 歌曲與 0243 譜</span>
             </button>
             <button
-              onClick={() => setMobileTab('editor')}
+              onClick={() => switchMobileTab('editor')}
               className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
                 mobileTab === 'editor'
                   ? 'bg-white text-zinc-900 shadow-xs font-bold'
