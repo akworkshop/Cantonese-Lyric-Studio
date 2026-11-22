@@ -1305,10 +1305,6 @@ export default function CantoneseLyricStudioPage() {
       return;
     }
 
-    if (roundNum === 2) {
-      rejectedPhrasesRef.current = [];
-    }
-
     setIsReviewingLyrics(true);
     setRound2Notice({ status: 'running', roundCount: roundNum, changes: [] });
 
@@ -1423,6 +1419,7 @@ export default function CantoneseLyricStudioPage() {
 
   // AI 生成歌詞
   const handleAIGenerateLyrics = async () => {
+    rejectedPhrasesRef.current = [];
     setErrorBanner(null);
     setIsGeneratingLyrics(true);
     setMobileTab('editor');
@@ -1474,50 +1471,10 @@ export default function CantoneseLyricStudioPage() {
     }
   };
 
-  // 全局主題檢測與意境昇華審查
+  // 全局主題檢測與意境昇華審查（與第 2、3 輪一致：直接由 AI 挑選最佳歌詞並自動套用到畫布）
   const handleReviewLyrics = async () => {
-    if (
-      !lines ||
-      lines.length === 0 ||
-      lines.every((l) => l.groups.every((g) => g.tokens.every((t) => !t.char)))
-    ) {
-      showToast('請先填入或生成歌詞，再進行全局檢測');
-      return;
-    }
-    setErrorBanner(null);
-    setIsReviewingLyrics(true);
-    try {
-      const res = await fetch('/api/review-lyrics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          meaning,
-          lines,
-          perspective,
-          rejectedPhrases: rejectedPhrasesRef.current,
-          aiConfig,
-        }),
-      });
-
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error(`伺服器回應異常 (${res.status})，請確認網路或 API Key 設定`);
-      }
-
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || '全局檢測失敗');
-      }
-
-      setThematicReview(data);
-      setShowReviewModal(true);
-      showToast(`全局主題檢測完成！評分：${data.overallScore} 分`);
-    } catch (err: unknown) {
-      setErrorBanner(err instanceof Error ? err.message : '全局主題檢測時發生錯誤');
-    } finally {
-      setIsReviewingLyrics(false);
-    }
+    const nextRound = round2Notice.status === 'done' ? round2Notice.roundCount + 1 : 2;
+    await runRound2Review(lines, nextRound, 0);
   };
 
   // 統一套用單組替換或跨組整行重新斷詞
