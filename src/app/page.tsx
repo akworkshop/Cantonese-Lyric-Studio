@@ -1951,7 +1951,7 @@ export default function CantoneseLyricStudioPage() {
                 Cantonese Lyric
               </span>
               <span className="text-[9px] text-zinc-400 leading-none">
-                by Jacky · AK Workshop
+                by Jacky · AK Workshop · v{process.env.NEXT_PUBLIC_APP_VERSION || 'dev'}
               </span>
             </div>
           </div>
