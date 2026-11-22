@@ -1474,7 +1474,7 @@ export default function CantoneseLyricStudioPage() {
   // 全局主題檢測與意境昇華審查（與第 2、3 輪一致：直接由 AI 挑選最佳歌詞並自動套用到畫布）
   const handleReviewLyrics = async () => {
     const nextRound = round2Notice.status === 'done' ? round2Notice.roundCount + 1 : 2;
-    await runRound2Review(lines, nextRound, 0);
+    await runAutoRefineRound(lines, nextRound, 0);
   };
 
   // 統一套用單組替換或跨組整行重新斷詞
