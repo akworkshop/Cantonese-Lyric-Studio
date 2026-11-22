@@ -1502,11 +1502,13 @@ export function getVerifiedCandidatesForGroupPattern(
       const leftWords = maybeShuffle(sortedLeft.slice(0, 50)).slice(0, 36);
       const rightWords = maybeShuffle(sortedRight.slice(0, 50)).slice(0, 36);
 
+      const rightCountMap = new Map<string, number>();
       for (const lw of leftWords) {
         if (leftLen === 1 && !ALLOWED_SINGLE_PREFIX.has(lw)) continue;
         let perLeftCount = 0;
         for (const rw of rightWords) {
           if (cleanPattern.length - leftLen === 1 && !ALLOWED_SINGLE_SUFFIX.has(rw)) continue;
+          if ((rightCountMap.get(rw) || 0) >= 2) continue;
           if (!isNaturalCombinedPhrase(lw, rw)) continue;
 
           const combined = `${lw}${rw}`;
@@ -1520,6 +1522,7 @@ export function getVerifiedCandidatesForGroupPattern(
             seen.add(combined);
             combinedCandidates.push(combined);
             perLeftCount++;
+            rightCountMap.set(rw, (rightCountMap.get(rw) || 0) + 1);
             if (perLeftCount >= 2) break;
             if (exactCandidates.length + combinedCandidates.length >= Math.max(limit * 2, 80)) {
               break;

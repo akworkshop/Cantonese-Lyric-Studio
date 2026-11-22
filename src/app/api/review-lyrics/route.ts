@@ -319,18 +319,22 @@ export async function POST(req: NextRequest) {
     const altPartPoolSize = isLowTpm ? 6 : unlockedLineCount >= 13 ? 7 : unlockedLineCount >= 10 ? 9 : 12;
     const includeThreeGroup = true;
 
-    // 前綴多樣性抽樣：每個兩字開頭在第一輪最多只取 2 個，避免 30 個選項看起來全部同一個開頭
+    // 前後綴多樣性抽樣：每個兩字開頭或兩字結尾最多只取 2 個，避免 30 個選項全部同一個開頭或同一個結尾（如全都是「我前路」）
     const pickDiversePhrases = (pool: string[], limit: number): string[] => {
       const picked: string[] = [];
       const prefixCount = new Map<string, number>();
+      const suffixCount = new Map<string, number>();
       const overflow: string[] = [];
       for (const item of pool) {
         if (picked.length >= limit) break;
         const prefix = item.slice(0, 2);
-        const cnt = prefixCount.get(prefix) || 0;
-        if (cnt < 2) {
+        const suffix = item.slice(-2);
+        const pCnt = prefixCount.get(prefix) || 0;
+        const sCnt = suffixCount.get(suffix) || 0;
+        if (pCnt < 2 && sCnt < 2) {
           picked.push(item);
-          prefixCount.set(prefix, cnt + 1);
+          prefixCount.set(prefix, pCnt + 1);
+          suffixCount.set(suffix, sCnt + 1);
         } else {
           overflow.push(item);
         }
