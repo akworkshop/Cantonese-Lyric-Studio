@@ -1548,8 +1548,31 @@ export function getVerifiedCandidatesForGroupPattern(
     combinedCandidates.sort((a, b) => scorePhraseByTheme(b, themeText) - scorePhraseByTheme(a, themeText));
   }
 
-  const allPool = [...exactCandidates, ...combinedCandidates];
-  return allPool.slice(0, limit);
+  // 全域前後綴多樣性排序：同一個兩字開頭或兩字結尾在前排最多出現 2 次，避免「萬民／我前路」連續洗版
+  const rawPool = [...exactCandidates, ...combinedCandidates];
+  const diversified: string[] = [];
+  const overflow: string[] = [];
+  const prefixCounts = new Map<string, number>();
+  const suffixCounts = new Map<string, number>();
+  for (const item of rawPool) {
+    if (item.length >= 4) {
+      const pre = item.slice(0, 2);
+      const suf = item.slice(-2);
+      const pCnt = prefixCounts.get(pre) || 0;
+      const sCnt = suffixCounts.get(suf) || 0;
+      if (pCnt < 2 && sCnt < 2) {
+        diversified.push(item);
+        prefixCounts.set(pre, pCnt + 1);
+        suffixCounts.set(suf, sCnt + 1);
+      } else {
+        overflow.push(item);
+      }
+    } else {
+      diversified.push(item);
+    }
+  }
+
+  return [...diversified, ...overflow].slice(0, limit);
 }
 
 /**
