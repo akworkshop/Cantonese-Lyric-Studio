@@ -977,15 +977,16 @@ export default function CantoneseLyricStudioPage() {
     }
   }, []);
 
-  // 檢查 Gemini 帳號可用模型（檢測是否支援 2.5 / 3.0 / 3.8 等模型）
+  // 檢查 Gemini 帳號可用文字模型（僅顯示該 API Key 實際支援的純文字模型）
   const checkGeminiModels = useCallback(async (apiKey: string) => {
-    if (!apiKey.trim()) return;
+    const trimmed = apiKey.trim();
+    if (trimmed.length < 20) return;
     setGeminiStatus((prev) => ({ ...prev, checking: true, message: undefined }));
     try {
       const res = await fetch('/api/gemini-models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey }),
+        body: JSON.stringify({ apiKey: trimmed }),
       });
       const data = await res.json();
       if (data.connected && data.models?.length > 0) {
@@ -993,7 +994,7 @@ export default function CantoneseLyricStudioPage() {
           checking: false,
           connected: true,
           models: data.models,
-          message: `已成功讀取 ${data.models.length} 個可用 Gemini 模型`,
+          message: `已成功讀取 ${data.models.length} 個可用 Gemini 文字模型`,
         });
         setAiConfig((prev) => ({
           ...prev,
@@ -1006,7 +1007,7 @@ export default function CantoneseLyricStudioPage() {
           checking: false,
           connected: false,
           models: DEFAULT_MODELS.gemini,
-          message: data.message || '無法讀取模型列表，請確認 API Key 是否正確',
+          message: data.error || data.message || '無法讀取模型列表，請確認 API Key 是否正確',
         });
       }
     } catch {

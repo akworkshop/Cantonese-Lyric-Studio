@@ -35,25 +35,38 @@ export async function POST(req: NextRequest) {
       supportedGenerationMethods?: string[];
     }[] = Array.isArray(data?.models) ? data.models : [];
 
-    // 篩選支援 generateContent 的 Gemini 生成模型，並按版本號由新到舊排序（例如 3.x -> 2.5 -> 2.0）
+    // 僅保留文字生成 (Text / Chat) 的 Gemini 模型，排除圖像、語音 TTS、即時串流 Live、機器人及電腦操控等非純文字模型
+    const NON_TEXT_KEYWORDS = [
+      'embedding',
+      'vision',
+      'imagen',
+      'image',
+      'tts',
+      'live',
+      'audio',
+      'robotics',
+      'computer-use',
+      'aqa',
+      'veo',
+      'lyria',
+    ];
+
     const chatModels = rawModels
-      .filter(
-        (m) =>
-          m.name &&
-          m.name.includes('gemini') &&
-          !m.name.includes('embedding') &&
-          !m.name.includes('vision') &&
-          !m.name.includes('imagen') &&
-          !m.name.includes('aqa') &&
-          (!m.supportedGenerationMethods ||
-            m.supportedGenerationMethods.includes('generateContent'))
-      )
+      .filter((m) => {
+        if (!m.name) return false;
+        const lower = m.name.toLowerCase();
+        if (!lower.includes('gemini')) return false;
+        if (NON_TEXT_KEYWORDS.some((kw) => lower.includes(kw))) return false;
+        const methods = m.supportedGenerationMethods;
+        if (methods && !methods.includes('generateContent')) return false;
+        return true;
+      })
       .map((m) => {
         const cleanId = m.name.replace(/^models\//, '');
         return {
           id: cleanId,
-          name: m.displayName ? `${m.displayName} (${cleanId})` : cleanId,
-          badge: '帳號可用',
+          name: m.displayName ? `${m.displayName}` : cleanId,
+          badge: '文字模型 · 帳號可用',
         };
       })
       .sort((a, b) => b.id.localeCompare(a.id));
